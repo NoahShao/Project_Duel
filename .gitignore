@@ -1,0 +1,11 @@
+# Unity - 不提交自动生成/缓存目录
+Project_Duel/[Ll]ibrary/
+Project_Duel/[Tt]emp/
+Project_Duel/[Oo]bj/
+Project_Duel/[Bb]uild/
+Project_Duel/[Bb]uilds/
+Project_Duel/[Ll]ogs/
+Project_Duel/[Uu]ser[Ss]ettings/
+*.log
+.vs/
+.gradle/
