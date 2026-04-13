@@ -14,6 +14,12 @@ namespace JunzhenDuijue
         private const string ManualPrimaryEffectId = "manual_primary_effect";
         private const string DiscardEndRenZheWuDiEffectId = "discard_end_draw_reveal_red_heal_black_damage";
 
+        /// <summary>【长吼】攻击技结算伤害时，若打出含红色牌则加伤（在防御减免之后）。</summary>
+        public const string AttackRedBonusDamageEffectId = "attack_red_bonus_damage";
+
+        /// <summary>【据水断桥】从弃牌堆回收并依花色数回血、额外出牌阶段。</summary>
+        public const string PrimaryRecoverDiscardExtraPhaseEffectId = "primary_recover_discard_gain_extra_phase";
+
         private const string Hearts = "\u7ea2\u6843";
         private const string Diamonds = "\u65b9\u7247";
         private const string Spades = "\u9ed1\u6843";
@@ -27,6 +33,40 @@ namespace JunzhenDuijue
             bool init = state.InitiativeSideIsPlayer;
             RefreshSideContinuousState(state, init);
             RefreshSideContinuousState(state, !init);
+        }
+
+        /// <summary>
+        /// 「结算使用攻击技造成的伤害时」：在防御技等登记的减伤与抵御等已从本次伤害中扣减之后，再叠加【长吼】加伤（不再受防御技/抵御影响）。
+        /// </summary>
+        public static int GetChangHouBonusWhenResolvingAttackDamage(BattleState state)
+        {
+            if (state == null)
+                return 0;
+            if (state.PendingAttackSkillKind == SelectedSkillKind.None)
+                return 0;
+
+            var played = state.ActiveSide.PlayedThisPhase;
+            if (played == null || played.Count == 0)
+                return 0;
+
+            bool anyRed = false;
+            for (int i = 0; i < played.Count; i++)
+            {
+                if (PokerPatternRules.IsRedCard(played[i]))
+                {
+                    anyRed = true;
+                    break;
+                }
+            }
+
+            if (!anyRed)
+                return 0;
+
+            bool attackerIsPlayer = state.IsPlayerTurn;
+            if (!TryFindFaceUpRule(state, attackerIsPlayer, e => string.Equals(e.EffectId, AttackRedBonusDamageEffectId, StringComparison.Ordinal), out _, out _, out _, out SkillRuleEntry rule))
+                return 0;
+
+            return Mathf.Max(0, rule.Value1);
         }
 
         /// <summary>
@@ -126,6 +166,7 @@ namespace JunzhenDuijue
             }
 
             SkillEffectBanner.Show(sideIsPlayer, false, SkillEffectBanner.GetRoleNameFromCardId(cardIdRz), rule.SkillName, outcome);
+            GameUI.CheckImmediateGameOverAfterHpChange();
             return true;
         }
 

@@ -654,7 +654,10 @@ namespace JunzhenDuijue
         private static void ResolveCurrentCombat()
         {
             int defenseReduction = _state.PendingIgnoreDefenseReduction ? 0 : _state.PendingDefenseReduction;
-            int damage = Mathf.Max(0, _state.PendingBaseDamage + _state.PendingAttackBonus - defenseReduction);
+            int rawHit = _state.PendingBaseDamage + _state.PendingAttackBonus;
+            int damageAfterDefense = rawHit - defenseReduction;
+            int changHouBonus = OfflineSkillEngine.GetChangHouBonusWhenResolvingAttackDamage(_state);
+            int damage = Mathf.Max(0, damageAfterDefense + changHouBonus);
             string attackName = string.IsNullOrWhiteSpace(_state.PendingAttackSkillName) ? "通用攻击" : _state.PendingAttackSkillName;
             string defenseName = string.IsNullOrWhiteSpace(_state.PendingDefenseSkillName) ? "未防御" : _state.PendingDefenseSkillName;
             DamageCategory dmgCat = _state.PendingDamageCategory == DamageCategory.None ? DamageCategory.Generic : _state.PendingDamageCategory;
@@ -668,6 +671,9 @@ namespace JunzhenDuijue
                 else
                     summary += "\uff08\u5df2\u8ba1\u5165\u9632\u5fa1\u51cf\u514d\uff09";
             }
+
+            if (changHouBonus > 0)
+                summary += "\uff0c\u3010\u957f\u543c\u3011\u52a0\u4f24+" + changHouBonus;
 
             if (damage > 0)
             {
@@ -699,6 +705,8 @@ namespace JunzhenDuijue
             logLine.Append("\u5bf9").Append(_state.IsPlayerTurn ? "\u654c\u65b9" : "\u5df1\u65b9\u73a9\u5bb6");
             logLine.Append(DamageTypeLabels.FormatResolvedDamageLine(damage, dmgCat, dmgEl));
             logLine.Append("\uff08\u9632\u5fa1\uff1a").Append(defenseName).Append("\uff09");
+            if (changHouBonus > 0)
+                logLine.Append("\uff0c\u3010\u957f\u543c\u3011\u52a0\u4f24+").Append(changHouBonus);
             if (_state.PendingPostResolveDrawToAttacker > 0)
                 logLine.Append("\uff0c\u653b\u51fb\u65b9\u6478").Append(_state.PendingPostResolveDrawToAttacker).Append("\u5f20\u724c");
             if (_state.PendingPostResolveHealToAttacker > 0)
@@ -737,7 +745,7 @@ namespace JunzhenDuijue
                     if (!SkillHasTag(data, sk, "\u653b\u51fb\u6280"))
                         continue;
 
-                    string shotKey = sideIsPlayer + "_" + g + "_" + sk;
+                    string shotKey = (sideIsPlayer ? "True" : "False") + "_" + g + "_" + sk;
                     if (SkillHasTag(data, sk, "\u7834\u519b\u6280") && side.UsedOneShotSkills.Contains(shotKey))
                         continue;
 
@@ -877,7 +885,7 @@ namespace JunzhenDuijue
                     if (!SkillHasTag(data, currentSkillIndex, tag))
                         continue;
 
-                    string key = sideIsPlayer + "_" + cardIndex + "_" + currentSkillIndex;
+                    string key = (sideIsPlayer ? "True" : "False") + "_" + cardIndex + "_" + currentSkillIndex;
                     if (SkillHasTag(data, currentSkillIndex, "破军技") && side.UsedOneShotSkills.Contains(key))
                         continue;
 

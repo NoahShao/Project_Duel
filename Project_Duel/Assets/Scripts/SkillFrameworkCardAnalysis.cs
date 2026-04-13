@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace JunzhenDuijue
 {
-    /// <summary>打出区牌型（与通用攻击一致）：同点分组用 <see cref="PokerPatternRules.GetComparisonPoint"/>，顺子用 <see cref="PokerPatternRules.IsFlexibleStraight"/>。</summary>
+    /// <summary>打出区牌型（与通用攻击一致）：对子/三条等用 <see cref="PokerPatternRules.GetComparisonPoint"/>；葫芦、两对用 <see cref="PokerPatternRules.IsFullHouseCompositeFive"/> / <see cref="PokerPatternRules.IsTwoPairCompositeFour"/>；顺子用 <see cref="PokerPatternRules.IsFlexibleStraight"/>。</summary>
     public static class SkillFrameworkCardAnalysis
     {
         public struct PlayedHandShape
@@ -50,12 +50,8 @@ namespace JunzhenDuijue
             shape.IsPair = cards.Count == 2 && shape.MaxSameRankCount == 2;
             shape.IsTriple = cards.Count == 3 && shape.MaxSameRankCount == 3;
             shape.IsFourOfAKind = cards.Count == 4 && shape.MaxSameRankCount == 4;
-            shape.IsTwoPair = cards.Count == 4 && shape.PairGroupCount == 2;
-            if (cards.Count == 5)
-            {
-                var groupSizes = ranks.GroupBy(r => r).Select(g => g.Count()).OrderByDescending(c => c).ToList();
-                shape.IsFullHouse = groupSizes.Count == 2 && groupSizes[0] == 3 && groupSizes[1] == 2;
-            }
+            shape.IsTwoPair = cards.Count == 4 && PokerPatternRules.IsTwoPairCompositeFour(cards);
+            shape.IsFullHouse = cards.Count == 5 && PokerPatternRules.IsFullHouseCompositeFive(cards);
 
             return shape;
         }

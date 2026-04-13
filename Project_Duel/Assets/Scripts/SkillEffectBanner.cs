@@ -26,6 +26,18 @@ namespace JunzhenDuijue
             ToastUI.Show(line, DefaultDuration, pauseGameWhileVisible: true, onComplete);
         }
 
+        /// <summary>整句技能战报横幅（如【据水断桥】长文案），走 Toast 自适应换行与面板尺寸。</summary>
+        public static void ShowRawLine(string fullLine, Action onComplete = null)
+        {
+            if (BattleAttackPreview.SuppressSkillBanners)
+            {
+                onComplete?.Invoke();
+                return;
+            }
+
+            ToastUI.Show(fullLine ?? string.Empty, DefaultDuration, pauseGameWhileVisible: true, onComplete);
+        }
+
         public static string GetRoleNameFromCardId(string cardId)
         {
             var card = CardTableLoader.GetCard(CardTableLoader.CardIdToNumber(cardId));

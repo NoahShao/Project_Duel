@@ -241,7 +241,7 @@ namespace JunzhenDuijue
 
             if (n == 5 && IsFullHouse(sub))
             {
-                opt = new GenericAttackOption(GenericAttackShapeKind.FullHouse, 5, 2, "\u837c\u5362");
+                opt = new GenericAttackOption(GenericAttackShapeKind.FullHouse, 5, 2, "\u846b\u82a6");
                 return true;
             }
 
@@ -297,20 +297,10 @@ namespace JunzhenDuijue
             cards.Count == 4
             && cards.All(c => PokerPatternRules.GetComparisonPoint(c) == PokerPatternRules.GetComparisonPoint(cards[0]));
 
-        private static bool IsTwoPair(List<PokerCard> cards)
-        {
-            if (cards.Count != 4)
-                return false;
-            int[] ord = cards.Select(c => PokerPatternRules.GetComparisonPoint(c)).OrderBy(r => r).ToArray();
-            return ord[0] == ord[1] && ord[2] == ord[3] && ord[1] != ord[2];
-        }
+        private static bool IsTwoPair(List<PokerCard> cards) =>
+            cards.Count == 4 && PokerPatternRules.IsTwoPairCompositeFour(cards);
 
-        private static bool IsFullHouse(List<PokerCard> cards)
-        {
-            if (cards.Count != 5)
-                return false;
-            var g = cards.GroupBy(c => PokerPatternRules.GetComparisonPoint(c)).Select(x => x.Count()).OrderByDescending(c => c).ToArray();
-            return g.Length == 2 && g[0] == 3 && g[1] == 2;
-        }
+        private static bool IsFullHouse(List<PokerCard> cards) =>
+            cards.Count == 5 && PokerPatternRules.IsFullHouseCompositeFive(cards);
     }
 }

@@ -12,6 +12,7 @@ namespace JunzhenDuijue
     public static class ToastUI
     {
         private static GameObject _root;
+        private static RectTransform _panelRect;
         private static TextMeshProUGUI _text;
         private static Coroutine _hideRoutine;
         private static float _savedTimeScale = 1f;
@@ -26,7 +27,9 @@ namespace JunzhenDuijue
             RestoreTimeScaleIfPausedByToast();
 
             _text.text = message ?? "";
+            // 必须先激活层级再量字，否则首局首次横幅时 TMP 未参与 Canvas 布局，会错误换行且底框尺寸不对。
             _root.SetActive(true);
+            ApplyPanelSizeToText();
             if (_hideRoutine != null)
             {
                 var go = _root.GetComponent<MonoBehaviour>();
@@ -103,6 +106,7 @@ namespace JunzhenDuijue
             panelRect.anchorMax = new Vector2(0.5f, 0.5f);
             panelRect.pivot = new Vector2(0.5f, 0.5f);
             panelRect.anchoredPosition = Vector2.zero;
+            _panelRect = panelRect;
             panelRect.sizeDelta = new Vector2(520, 80);
             panel.AddComponent<Image>().color = new Color(0.15f, 0.15f, 0.2f, 0.95f);
 
@@ -111,15 +115,61 @@ namespace JunzhenDuijue
             _text = textGo.AddComponent<TextMeshProUGUI>();
             if (TMPHelper.GetDefaultFont() != null) _text.font = TMPHelper.GetDefaultFont();
             _text.fontSize = 28;
+            _text.enableWordWrapping = true;
             _text.alignment = TextAlignmentOptions.Center;
             _text.color = Color.white;
             var textRect = textGo.GetComponent<RectTransform>();
-            textRect.anchorMin = Vector2.zero;
-            textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = new Vector2(16, 8);
-            textRect.offsetMax = new Vector2(-16, -8);
+            textRect.anchorMin = new Vector2(0.5f, 0.5f);
+            textRect.anchorMax = new Vector2(0.5f, 0.5f);
+            textRect.pivot = new Vector2(0.5f, 0.5f);
+            textRect.anchoredPosition = Vector2.zero;
 
             _root.AddComponent<ToastRunner>();
+        }
+
+        /// <summary>按当前文案测量 TMP 排版，撑开底图（技能横幅等长句不换行裁切问题）。</summary>
+        private static void ApplyPanelSizeToText()
+        {
+            if (_text == null || _panelRect == null)
+                return;
+
+            const float maxTextWidth = 1680f;
+            const float padX = 40f;
+            const float padY = 28f;
+            const float minPanelW = 280f;
+            const float minPanelH = 72f;
+
+            string t = _text.text ?? string.Empty;
+            // ignoreActiveState：避免在层级切换的同一帧内漏更新网格。
+            _text.ForceMeshUpdate(true);
+            Vector2 pref = MeasurePreferredWrapped(t, maxTextWidth);
+            float innerW = Mathf.Max(pref.x, 40f);
+            float innerH = Mathf.Max(pref.y, _text.fontSize * 1.25f);
+            float panelW = Mathf.Clamp(innerW + padX, minPanelW, maxTextWidth + padX);
+            float panelH = Mathf.Max(innerH + padY, minPanelH);
+            _panelRect.sizeDelta = new Vector2(panelW, panelH);
+            var tr = _text.rectTransform;
+            tr.sizeDelta = new Vector2(panelW - padX, panelH - padY);
+            Canvas.ForceUpdateCanvases();
+            // 内层尺寸更新后 TMP 可能重排，再量一次避免首帧与后续不一致。
+            _text.ForceMeshUpdate(true);
+            Vector2 pref2 = MeasurePreferredWrapped(t, maxTextWidth);
+            float innerW2 = Mathf.Max(pref2.x, 40f);
+            float innerH2 = Mathf.Max(pref2.y, _text.fontSize * 1.25f);
+            float panelW2 = Mathf.Clamp(innerW2 + padX, minPanelW, maxTextWidth + padX);
+            float panelH2 = Mathf.Max(innerH2 + padY, minPanelH);
+            if (!Mathf.Approximately(panelW2, panelW) || !Mathf.Approximately(panelH2, panelH))
+            {
+                _panelRect.sizeDelta = new Vector2(panelW2, panelH2);
+                tr.sizeDelta = new Vector2(panelW2 - padX, panelH2 - padY);
+            }
+        }
+
+        private static Vector2 MeasurePreferredWrapped(string t, float maxTextWidth)
+        {
+            if (_text == null)
+                return Vector2.zero;
+            return _text.GetPreferredValues(t, maxTextWidth, 0f);
         }
 
         private class ToastRunner : MonoBehaviour { }

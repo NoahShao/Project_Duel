@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -65,6 +66,18 @@ namespace JunzhenDuijue
         private static List<int> _discardPhaseSelectedIndices = new List<int>();
         private static int _discardPhaseNeedCount;
         private static bool _discardPhaseIsPlayer;
+        private static GameObject _jushuiPopupRoot;
+        private static Transform _jushuiContent;
+        private static TextMeshProUGUI _jushuiTitle;
+        private static TextMeshProUGUI _jushuiSubtitle;
+        private static Button _jushuiConfirmBtn;
+        private static Button _jushuiCancelBtn;
+        private static int _jushuiGeneralIndex;
+        private static int _jushuiSkillIndex;
+        private static int _jushuiMaxPick;
+        private static readonly List<int> _jushuiSelectedOrder = new List<int>();
+        private static readonly HashSet<int> _jushuiSelectedSet = new HashSet<int>();
+        private static readonly List<PokerCard> _jushuiSnapshot = new List<PokerCard>();
         private static GameObject _moralePopupRoot;
         private static Button[] _moraleEffectButtons = new Button[3];
         private static Transform _playerHandContent;
@@ -148,6 +161,7 @@ namespace JunzhenDuijue
             BuildChoicePopup();
             BuildAttackPatternPopup();
             BuildDiscardPhasePopup();
+            BuildJushuiDuanqiaoPopup();
             BuildBattleFlowLogUI();
             BattleFlowLog.Changed += RefreshBattleFlowLogPanel;
             BuildVictoryDefeatPopups();
@@ -227,8 +241,7 @@ namespace JunzhenDuijue
         {
             if (_state == null || amount <= 0) return;
             _state.Player.CurrentHp = Mathf.Max(0, _state.Player.CurrentHp - amount);
-            RefreshAllFromState();
-            if (_state.Player.CurrentHp <= 0) ShowDefeatPopup();
+            CheckImmediateGameOverAfterHpChange();
         }
 
         /// <summary> 闂佽娴烽弫鎼佸箠閹炬椿鏁嬫い鏇楀亾妤犵偛绉堕埀顒婄秵閸犳帡宕戦幘缁樺亹闁告劘灏欐禍锝嗙箾鐎靛壊鍎犻柛濠冩礋椤㈡瑦绻濋崶銊︽珫閻庡厜鍋撻柛鎰电厛娴犙囨煟閻愬鈻撻柛瀣崌濮婃椽骞撻幒鏃傤唶缂傚倸绉撮敃顏勵潖鐠恒劍宕夐柛婵嗗娴犙囨倵濞堝灝鏋ら柟铏崌瀹曠敻顢橀姀鈥虫畱濠电姴锕ら崯顐︽倿濞差亝鐓?</summary>
@@ -236,8 +249,23 @@ namespace JunzhenDuijue
         {
             if (_state == null || amount <= 0) return;
             _state.Opponent.CurrentHp = Mathf.Max(0, _state.Opponent.CurrentHp - amount);
+            CheckImmediateGameOverAfterHpChange();
+        }
+
+        /// <summary>任意路径修改生命后调用：任一方生命≤0 时立刻弹出胜负（先判己方失败）。</summary>
+        public static void CheckImmediateGameOverAfterHpChange()
+        {
+            if (_state == null)
+                return;
             RefreshAllFromState();
-            if (_state.Opponent.CurrentHp <= 0) ShowVictoryPopup();
+            if (_state.Player.CurrentHp <= 0)
+            {
+                ShowDefeatPopup();
+                return;
+            }
+
+            if (_state.Opponent.CurrentHp <= 0)
+                ShowVictoryPopup();
         }
 
         private static void ShowVictoryPopup() { if (_victoryPopupRoot != null) _victoryPopupRoot.SetActive(true); }
@@ -2118,6 +2146,320 @@ namespace JunzhenDuijue
             RefreshAllFromState();
         }
 
+        private static void BuildJushuiDuanqiaoPopup()
+        {
+            _jushuiPopupRoot = new GameObject("JushuiDuanqiaoPopup");
+            _jushuiPopupRoot.transform.SetParent(_root.transform, false);
+            _jushuiPopupRoot.SetActive(false);
+            SetFullRect(_jushuiPopupRoot.AddComponent<RectTransform>());
+            var canvas = _jushuiPopupRoot.AddComponent<Canvas>();
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = 46;
+            _jushuiPopupRoot.AddComponent<GraphicRaycaster>();
+            var overlay = new GameObject("Overlay");
+            overlay.transform.SetParent(_jushuiPopupRoot.transform, false);
+            var ovImg = overlay.AddComponent<Image>();
+            ovImg.color = new Color(0, 0, 0, 0.6f);
+            ovImg.raycastTarget = true;
+            SetFullRect(overlay.GetComponent<RectTransform>());
+            overlay.AddComponent<Button>().transition = Selectable.Transition.None;
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(_jushuiPopupRoot.transform, false);
+            var panelR = panel.AddComponent<RectTransform>();
+            panelR.anchorMin = new Vector2(0.5f, 0.5f);
+            panelR.anchorMax = new Vector2(0.5f, 0.5f);
+            panelR.pivot = new Vector2(0.5f, 0.5f);
+            panelR.anchoredPosition = Vector2.zero;
+            panelR.sizeDelta = new Vector2(1000, 480);
+            panel.AddComponent<Image>().color = new Color(0.18f, 0.2f, 0.26f, 0.98f);
+            var titleGo = new GameObject("Title");
+            titleGo.transform.SetParent(panel.transform, false);
+            var titleR = titleGo.AddComponent<RectTransform>();
+            titleR.anchorMin = new Vector2(0.5f, 1f);
+            titleR.anchorMax = new Vector2(0.5f, 1f);
+            titleR.pivot = new Vector2(0.5f, 1f);
+            titleR.anchoredPosition = new Vector2(0, -12);
+            titleR.sizeDelta = new Vector2(920, 36);
+            _jushuiTitle = CreateGameText(titleGo.transform, "\u636e\u6c34\u65ad\u6865", 28);
+            var subGo = new GameObject("Subtitle");
+            subGo.transform.SetParent(panel.transform, false);
+            var subR = subGo.AddComponent<RectTransform>();
+            subR.anchorMin = new Vector2(0.5f, 1f);
+            subR.anchorMax = new Vector2(0.5f, 1f);
+            subR.pivot = new Vector2(0.5f, 1f);
+            subR.anchoredPosition = new Vector2(0, -48);
+            subR.sizeDelta = new Vector2(920, 28);
+            _jushuiSubtitle = CreateGameText(subGo.transform, "", 20);
+            _jushuiSubtitle.enableWordWrapping = false;
+            _jushuiSubtitle.overflowMode = TextOverflowModes.Overflow;
+            _jushuiSubtitle.alignment = TextAlignmentOptions.Center;
+            SetFullRect(_jushuiSubtitle.GetComponent<RectTransform>());
+            var scrollGo = new GameObject("Scroll");
+            scrollGo.transform.SetParent(panel.transform, false);
+            var scrollR = scrollGo.AddComponent<RectTransform>();
+            scrollR.anchorMin = new Vector2(0f, 0f);
+            scrollR.anchorMax = new Vector2(1f, 1f);
+            scrollR.offsetMin = new Vector2(16, 64);
+            scrollR.offsetMax = new Vector2(-16, -88);
+            var viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(scrollGo.transform, false);
+            var vpR = viewport.AddComponent<RectTransform>();
+            vpR.anchorMin = Vector2.zero;
+            vpR.anchorMax = Vector2.one;
+            vpR.offsetMin = Vector2.zero;
+            vpR.offsetMax = Vector2.zero;
+            viewport.AddComponent<Image>().color = new Color(0.12f, 0.14f, 0.18f, 1f);
+            viewport.AddComponent<Mask>().showMaskGraphic = false;
+            var content = new GameObject("Content");
+            content.transform.SetParent(viewport.transform, false);
+            var contentR = content.AddComponent<RectTransform>();
+            contentR.anchorMin = new Vector2(0f, 1f);
+            contentR.anchorMax = new Vector2(1f, 1f);
+            contentR.pivot = new Vector2(0f, 1f);
+            contentR.anchoredPosition = Vector2.zero;
+            contentR.sizeDelta = new Vector2(0, 120);
+            var hlg = content.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 8;
+            hlg.padding = new RectOffset(8, 8, 8, 8);
+            hlg.childAlignment = TextAnchor.MiddleLeft;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = false;
+            content.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+            var sr = scrollGo.AddComponent<ScrollRect>();
+            sr.content = contentR;
+            sr.viewport = vpR;
+            sr.horizontal = true;
+            sr.vertical = false;
+            _jushuiContent = content.transform;
+            var btnRow = new GameObject("Buttons");
+            btnRow.transform.SetParent(panel.transform, false);
+            var btnRowR = btnRow.AddComponent<RectTransform>();
+            btnRowR.anchorMin = new Vector2(0.5f, 0f);
+            btnRowR.anchorMax = new Vector2(0.5f, 0f);
+            btnRowR.pivot = new Vector2(0.5f, 0f);
+            btnRowR.anchoredPosition = new Vector2(0, 12);
+            btnRowR.sizeDelta = new Vector2(360, 44);
+            var cancelGo = new GameObject("Cancel");
+            cancelGo.transform.SetParent(btnRow.transform, false);
+            var cancelR = cancelGo.AddComponent<RectTransform>();
+            cancelR.anchorMin = new Vector2(0f, 0f);
+            cancelR.anchorMax = new Vector2(0.5f, 1f);
+            cancelR.offsetMin = new Vector2(0, 0);
+            cancelR.offsetMax = new Vector2(-6, 0);
+            cancelGo.AddComponent<Image>().color = new Color(0.35f, 0.35f, 0.4f, 1f);
+            _jushuiCancelBtn = cancelGo.AddComponent<Button>();
+            _jushuiCancelBtn.onClick.AddListener(OnJushuiDuanqiaoCancel);
+            CreateGameText(cancelGo.transform, "\u53d6\u6d88", 22);
+            var confirmGo = new GameObject("Confirm");
+            confirmGo.transform.SetParent(btnRow.transform, false);
+            var confirmR = confirmGo.AddComponent<RectTransform>();
+            confirmR.anchorMin = new Vector2(0.5f, 0f);
+            confirmR.anchorMax = new Vector2(1f, 1f);
+            confirmR.offsetMin = new Vector2(6, 0);
+            confirmR.offsetMax = new Vector2(0, 0);
+            confirmGo.AddComponent<Image>().color = new Color(0.28f, 0.38f, 0.5f, 1f);
+            _jushuiConfirmBtn = confirmGo.AddComponent<Button>();
+            _jushuiConfirmBtn.onClick.AddListener(OnJushuiDuanqiaoConfirm);
+            CreateGameText(confirmGo.transform, "\u786e\u5b9a", 22);
+        }
+
+        private static bool IsJushuiDuanqiaoSkill(CardData data, int skillIndex)
+        {
+            if (data == null || string.IsNullOrEmpty(data.CardId))
+                return false;
+            var r = SkillRuleLoader.GetRule(data.CardId, skillIndex);
+            return r != null && string.Equals(r.EffectId, OfflineSkillEngine.PrimaryRecoverDiscardExtraPhaseEffectId, StringComparison.Ordinal);
+        }
+
+        private static string FlowTurnBracketForBattleLog()
+        {
+            if (_state == null)
+                return string.Empty;
+            return _state.IsPlayerTurn ? "\u3010\u5df1\u65b9\u56de\u5408\u3011" : "\u3010\u654c\u65b9\u56de\u5408\u3011";
+        }
+
+        private static void OpenJushuiDuanqiaoPopup(int generalIndex, int skillIndex)
+        {
+            if (_state == null || _jushuiPopupRoot == null)
+                return;
+
+            var data = CardTableLoader.GetCard(CardTableLoader.CardIdToNumber(_state.Player.GeneralCardIds[generalIndex]));
+            var rule = data != null ? SkillRuleLoader.GetRule(data.CardId, skillIndex) : null;
+            _jushuiMaxPick = rule != null && rule.Value2 > 0 ? rule.Value2 : 4;
+            _jushuiGeneralIndex = generalIndex;
+            _jushuiSkillIndex = skillIndex;
+            _jushuiSelectedOrder.Clear();
+            _jushuiSelectedSet.Clear();
+            _jushuiSnapshot.Clear();
+            _jushuiSnapshot.AddRange(_state.Player.DiscardPile);
+
+            if (_jushuiTitle != null)
+                _jushuiTitle.text = rule != null && !string.IsNullOrEmpty(rule.SkillName) ? rule.SkillName : "\u636e\u6c34\u65ad\u6865";
+            if (_jushuiSubtitle != null)
+                _jushuiSubtitle.text = "\u4ece\u4f60\u7684\u5f03\u724c\u5806\u4e2d\u83b7\u5f97\u81f3\u591a" + _jushuiMaxPick + "\u5f20\u724c";
+
+            foreach (Transform t in _jushuiContent)
+                UnityEngine.Object.Destroy(t.gameObject);
+
+            float cardW = 80f;
+            float cardH = cardW * CardAspectH / CardAspectW;
+            for (int i = 0; i < _jushuiSnapshot.Count; i++)
+            {
+                int index = i;
+                var pc = _jushuiSnapshot[i];
+                var item = new GameObject("DiscardItem");
+                item.transform.SetParent(_jushuiContent, false);
+                var le = item.AddComponent<LayoutElement>();
+                le.preferredWidth = cardW;
+                le.preferredHeight = cardH;
+                var img = item.AddComponent<Image>();
+                img.color = new Color(0.22f, 0.26f, 0.32f, 1f);
+                var btn = item.AddComponent<Button>();
+                btn.onClick.AddListener(() => ToggleJushuiDuanqiaoSelection(index, img));
+                var labelGo = new GameObject("Label");
+                labelGo.transform.SetParent(item.transform, false);
+                var label = CreateGameText(labelGo.transform, pc.DisplayName, 16);
+                SetFullRect(label.GetComponent<RectTransform>());
+            }
+
+            _jushuiPopupRoot.transform.SetAsLastSibling();
+            _jushuiPopupRoot.SetActive(true);
+        }
+
+        private static void ToggleJushuiDuanqiaoSelection(int index, Image img)
+        {
+            if (_jushuiSelectedSet.Contains(index))
+            {
+                _jushuiSelectedSet.Remove(index);
+                _jushuiSelectedOrder.Remove(index);
+                img.color = new Color(0.22f, 0.26f, 0.32f, 1f);
+            }
+            else if (_jushuiSelectedOrder.Count >= _jushuiMaxPick)
+            {
+                ToastUI.Show("\u53ea\u80fd\u81f3\u591a\u9009\u62e9\u56db\u5f20\u724c");
+            }
+            else
+            {
+                _jushuiSelectedSet.Add(index);
+                _jushuiSelectedOrder.Add(index);
+                img.color = new Color(0.4f, 0.6f, 0.9f, 1f);
+            }
+        }
+
+        private static void OnJushuiDuanqiaoCancel()
+        {
+            if (_jushuiPopupRoot != null)
+                _jushuiPopupRoot.SetActive(false);
+        }
+
+        private static void OnJushuiDuanqiaoConfirm()
+        {
+            if (_state == null)
+                return;
+
+            var side = _state.Player;
+            int gi = _jushuiGeneralIndex;
+            int sk = _jushuiSkillIndex;
+            if (gi < 0 || gi >= side.GeneralCardIds.Count || !side.IsGeneralFaceUp(gi))
+            {
+                OnJushuiDuanqiaoCancel();
+                return;
+            }
+
+            var data = CardTableLoader.GetCard(CardTableLoader.CardIdToNumber(side.GeneralCardIds[gi]));
+            if (data == null || !IsJushuiDuanqiaoSkill(data, sk))
+            {
+                OnJushuiDuanqiaoCancel();
+                return;
+            }
+
+            string skillKey = "True_" + gi + "_" + sk;
+            if (side.UsedOneShotSkills.Contains(skillKey))
+            {
+                ToastUI.Show("\u8be5\u7834\u519b\u6280\u672c\u5c40\u5df2\u4f7f\u7528");
+                OnJushuiDuanqiaoCancel();
+                return;
+            }
+
+            if (_jushuiSnapshot.Count != side.DiscardPile.Count)
+            {
+                ToastUI.Show("\u5f03\u724c\u5806\u5df2\u53d8\u52a8\uff0c\u8bf7\u91cd\u8bd5");
+                OnJushuiDuanqiaoCancel();
+                return;
+            }
+
+            for (int i = 0; i < _jushuiSnapshot.Count; i++)
+            {
+                var a = _jushuiSnapshot[i];
+                var b = side.DiscardPile[i];
+                if (a.Suit != b.Suit || a.Rank != b.Rank)
+                {
+                    ToastUI.Show("\u5f03\u724c\u5806\u5df2\u53d8\u52a8\uff0c\u8bf7\u91cd\u8bd5");
+                    OnJushuiDuanqiaoCancel();
+                    return;
+                }
+            }
+
+            var picked = new List<PokerCard>();
+            foreach (int idx in _jushuiSelectedOrder)
+            {
+                if (idx >= 0 && idx < _jushuiSnapshot.Count)
+                    picked.Add(_jushuiSnapshot[idx]);
+            }
+
+            foreach (int idx in _jushuiSelectedOrder.Distinct().OrderByDescending(i => i))
+            {
+                if (idx >= 0 && idx < side.DiscardPile.Count)
+                    side.DiscardPile.RemoveAt(idx);
+            }
+
+            foreach (var c in picked)
+                side.Hand.Add(c);
+
+            var suitKinds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var c in picked)
+            {
+                if (!string.IsNullOrEmpty(c.Suit))
+                    suitKinds.Add(c.Suit);
+            }
+
+            int x = suitKinds.Count;
+            if (x > 0)
+            {
+                side.RemoveAnyEffectLayers(x);
+                side.CurrentHp = Mathf.Min(side.MaxHp, side.CurrentHp + x);
+                _state.TotalPlayPhasesThisTurn += x;
+            }
+
+            side.UsedOneShotSkills.Add(skillKey);
+
+            string skillDisplay = GetSkillName(data, sk);
+            string roleName = GetGeneralDisplayName(true, gi);
+            string campActor = _state.IsPlayerTurn ? "\u5df1\u65b9" : "\u654c\u65b9";
+            string pileOwner = _state.IsPlayerTurn ? "\u5df1\u65b9" : "\u654c\u65b9";
+            string cardPart = picked.Count == 0
+                ? "\u65e0"
+                : string.Join("\u3001", picked.Select(p => p.DisplayName));
+
+            var banner = new StringBuilder();
+            banner.Append(FlowTurnBracketForBattleLog());
+            banner.Append(campActor).Append("\u89d2\u8272\u3010").Append(roleName).Append("\u3011\u4f7f\u7528\u6280\u80fd\u3010").Append(skillDisplay).Append("\u3011\uff0c\u4ece");
+            banner.Append(pileOwner).Append("\u5f03\u724c\u5806\u4e2d\u56de\u6536\u4e86").Append(picked.Count).Append("\u5f20\u724c\uff0c\u5206\u522b\u4e3a\uff1a");
+            banner.Append(cardPart);
+            banner.Append("\uff0c\u5e76\u6062\u590d\u4e86").Append(x).Append("\u70b9\u751f\u547d\uff0c\u672c\u56de\u5408\u4e2d\u83b7\u5f97\u4e86").Append(x).Append("\u4e2a\u51fa\u724c\u9636\u6bb5");
+
+            string line = banner.ToString();
+            SkillEffectBanner.ShowRawLine(line);
+            BattleFlowLog.Add(line);
+
+            if (_jushuiPopupRoot != null)
+                _jushuiPopupRoot.SetActive(false);
+
+            RefreshAllFromState();
+        }
+
         private const float GeneralCardWidth = 140f;
         private const float GeneralGap = 36f;
         private const float SkillButtonHeight = 58f;
@@ -3110,25 +3452,47 @@ namespace JunzhenDuijue
                 return;
             }
 
-            if (_state.CurrentPhase == BattlePhase.Primary && _state.CurrentPhaseStep == PhaseStep.Main && _state.IsPlayerTurn)
+            bool phaseOkPrimary = _state.CurrentPhase == BattlePhase.Primary && _state.CurrentPhaseStep == PhaseStep.Main && _state.IsPlayerTurn;
+            bool phaseOkPlayMain = _state.CurrentPhase == BattlePhase.Main && _state.CurrentPhaseStep == PhaseStep.Main && _state.IsPlayerTurn;
+            bool isPrimaryOrPojunSkill = SkillHasTag(data, skillIndex, "\u4e3b\u52a8\u6280") || SkillHasTag(data, skillIndex, "\u7834\u519b\u6280");
+            bool jushui = IsJushuiDuanqiaoSkill(data, skillIndex);
+            bool canUsePrimaryWindowSkill = (phaseOkPrimary && isPrimaryOrPojunSkill) || (phaseOkPlayMain && jushui);
+            if (phaseOkPrimary || phaseOkPlayMain)
             {
-                bool isPrimarySkill = SkillHasTag(data, skillIndex, "主动技") || SkillHasTag(data, skillIndex, "破军技");
-                if (!isPrimarySkill)
-                    return;
-                string skillKey = isPlayerSide + "_" + generalIndex + "_" + skillIndex;
-                if (SkillHasTag(data, skillIndex, "破军技"))
+                if (!canUsePrimaryWindowSkill)
                 {
-                    if (side.UsedOneShotSkills.Contains(skillKey))
+                    if (phaseOkPrimary)
+                        return;
+                }
+                else
+                {
+                    string skillKey = "True_" + generalIndex + "_" + skillIndex;
+                    if (SkillHasTag(data, skillIndex, "\u7834\u519b\u6280"))
                     {
-                        ToastUI.Show("该破军技本局已使用");
+                        if (side.UsedOneShotSkills.Contains(skillKey))
+                        {
+                            ToastUI.Show("\u8be5\u7834\u519b\u6280\u672c\u5c40\u5df2\u4f7f\u7528");
+                            return;
+                        }
+                    }
+
+                    if (jushui)
+                    {
+                        OpenJushuiDuanqiaoPopup(generalIndex, skillIndex);
                         return;
                     }
-                    side.UsedOneShotSkills.Add(skillKey);
+
+                    if (!OfflineSkillEngine.TryActivatePrimarySkill(_state, true, generalIndex, skillIndex, out string primMsg))
+                    {
+                        ToastUI.Show(string.IsNullOrEmpty(primMsg) ? "\u65e0\u6cd5\u53d1\u52a8\u8be5\u6280\u80fd" : primMsg);
+                        return;
+                    }
+
+                    if (SkillHasTag(data, skillIndex, "\u7834\u519b\u6280"))
+                        side.UsedOneShotSkills.Add(skillKey);
+                    RefreshGeneralSkillStates();
+                    return;
                 }
-                if (!OfflineSkillEngine.TryActivatePrimarySkill(_state, true, generalIndex, skillIndex, out string primMsg))
-                    ToastUI.Show(string.IsNullOrEmpty(primMsg) ? "\u65e0\u6cd5\u53d1\u52a8\u8be5\u6280\u80fd" : primMsg);
-                RefreshGeneralSkillStates();
-                return;
             }
 
             if (_state.CurrentPhase == BattlePhase.Main && _state.CurrentPhaseStep == PhaseStep.Main && _state.IsPlayerTurn && _state.ActiveSide.PlayedThisPhase.Count > 0)
@@ -3349,11 +3713,29 @@ namespace JunzhenDuijue
                         if (_state.CurrentPhase == BattlePhase.Primary && _state.CurrentPhaseStep == PhaseStep.Main && _state.IsPlayerTurn)
                             enabled = SkillHasTag(data, skillIndex, "\u4e3b\u52a8\u6280") || SkillHasTag(data, skillIndex, "\u7834\u519b\u6280");
 
-                        if (_state.CurrentPhase == BattlePhase.Main && _state.CurrentPhaseStep == PhaseStep.Main && _state.IsPlayerTurn && _state.ActiveSide.PlayedThisPhase.Count > 0)
-                            enabled = enabled || SkillHasTag(data, skillIndex, "\u653b\u51fb\u6280");
+                        if (_state.CurrentPhase == BattlePhase.Main && _state.CurrentPhaseStep == PhaseStep.Main && _state.IsPlayerTurn)
+                        {
+                            if (IsJushuiDuanqiaoSkill(data, skillIndex))
+                                enabled = true;
+                            else if (_state.ActiveSide.PlayedThisPhase.Count > 0)
+                                enabled = enabled || SkillHasTag(data, skillIndex, "\u653b\u51fb\u6280");
+                        }
 
                         if (_state.CurrentPhase == BattlePhase.Defense && _state.CurrentPhaseStep == PhaseStep.Main && !_state.IsPlayerTurn)
                             enabled = enabled || SkillHasTag(data, skillIndex, "\u9632\u5fa1\u6280");
+                    }
+
+                    string skillKey = (isPlayerSide ? "True" : "False") + "_" + cardIndex + "_" + skillIndex;
+                    bool pjUsed = data != null && SkillHasTag(data, skillIndex, "\u7834\u519b\u6280") && side.UsedOneShotSkills.Contains(skillKey);
+                    if (pjUsed)
+                        enabled = false;
+
+                    if (holder.SkillButtonLabels != null && skillIndex < holder.SkillButtonLabels.Count && holder.SkillButtonLabels[skillIndex] != null)
+                    {
+                        string nm = GetSkillName(data, skillIndex) ?? string.Empty;
+                        holder.SkillButtonLabels[skillIndex].text = pjUsed
+                            ? nm + "\n<size=10><color=#999999>\u5df2\u4f7f\u7528</color></size>"
+                            : nm;
                     }
 
                     holder.SetSkillButtonState(skillIndex, enabled);
