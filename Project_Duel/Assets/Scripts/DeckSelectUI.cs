@@ -16,6 +16,12 @@ namespace JunzhenDuijue
         private static List<GameObject> _deckRows = new List<GameObject>();
         private static Color _rowNormal = new Color(0.28f, 0.32f, 0.4f, 1f);
         private static Color _rowSelected = new Color(0.2f, 0.45f, 0.6f, 1f);
+        private static TextMeshProUGUI _titleText;
+        private static TextMeshProUGUI _confirmButtonText;
+        private static System.Action<DeckData> _confirmSelectionOverride;
+        private static System.Action _backOverride;
+        private static string _titleOverride;
+        private static string _confirmLabelOverride;
 
         public static void Create()
         {
@@ -42,12 +48,12 @@ namespace JunzhenDuijue
 
             var titleGo = new GameObject("Title");
             titleGo.transform.SetParent(_root.transform, false);
-            var titleText = titleGo.AddComponent<TextMeshProUGUI>();
-            titleText.text = "选择套牌开始游戏";
-            if (TMPHelper.GetDefaultFont() != null) titleText.font = TMPHelper.GetDefaultFont();
-            titleText.fontSize = 42;
-            titleText.alignment = TextAlignmentOptions.Center;
-            titleText.color = Color.white;
+            _titleText = titleGo.AddComponent<TextMeshProUGUI>();
+            _titleText.text = "选择套牌开始游戏";
+            if (TMPHelper.GetDefaultFont() != null) _titleText.font = TMPHelper.GetDefaultFont();
+            _titleText.fontSize = 42;
+            _titleText.alignment = TextAlignmentOptions.Center;
+            _titleText.color = Color.white;
             var titleRect = titleGo.GetComponent<RectTransform>();
             titleRect.anchorMin = new Vector2(0.5f, 1f);
             titleRect.anchorMax = new Vector2(0.5f, 1f);
@@ -131,6 +137,7 @@ namespace JunzhenDuijue
 
             var startBtn = CreateBarButton("开始游戏", btnW + gap, barY, btnW, btnH);
             startBtn.onClick.AddListener(OnStartGame);
+            _confirmButtonText = startBtn.GetComponentInChildren<TextMeshProUGUI>();
         }
 
         private static Button CreateBarButton(string label, float x, float y, float w, float h)
@@ -251,14 +258,11 @@ namespace JunzhenDuijue
 
         public static void Show()
         {
-            if (_root == null)
-                Create();
-            CompendiumUI.EnsureDecksLoaded();
-            _root.SetActive(true);
-            var decks = CompendiumUI.GetDecks();
-            if (_selectedDeckIndex >= decks.Count)
-                _selectedDeckIndex = -1;
-            RefreshDeckList();
+            _confirmSelectionOverride = null;
+            _backOverride = null;
+            _titleOverride = null;
+            _confirmLabelOverride = null;
+            OpenInternal();
         }
 
         public static void Hide()
@@ -267,9 +271,44 @@ namespace JunzhenDuijue
                 _root.SetActive(false);
         }
 
+        public static void ShowForSelection(System.Action<DeckData> onConfirm, System.Action onBackOverride = null, string title = "选择联机套牌", string confirmLabel = "选择套牌")
+        {
+            _confirmSelectionOverride = onConfirm;
+            _backOverride = onBackOverride;
+            _titleOverride = title;
+            _confirmLabelOverride = confirmLabel;
+            OpenInternal();
+        }
+
+        private static void OpenInternal()
+        {
+            if (_root == null)
+                Create();
+            CompendiumUI.EnsureDecksLoaded();
+            _root.SetActive(true);
+            ApplyModeTexts();
+            var decks = CompendiumUI.GetDecks();
+            if (_selectedDeckIndex >= decks.Count)
+                _selectedDeckIndex = -1;
+            RefreshDeckList();
+        }
+
+        private static void ApplyModeTexts()
+        {
+            if (_titleText != null)
+                _titleText.text = string.IsNullOrWhiteSpace(_titleOverride) ? "选择套牌开始游戏" : _titleOverride;
+            if (_confirmButtonText != null)
+                _confirmButtonText.text = string.IsNullOrWhiteSpace(_confirmLabelOverride) ? "开始游戏" : _confirmLabelOverride;
+        }
+
         private static void OnBack()
         {
             Hide();
+            if (_backOverride != null)
+            {
+                _backOverride.Invoke();
+                return;
+            }
             MainMenuUI.Show();
         }
 
@@ -300,6 +339,11 @@ namespace JunzhenDuijue
                 return;
             }
             Hide();
+            if (_confirmSelectionOverride != null)
+            {
+                _confirmSelectionOverride.Invoke(selectedDeck);
+                return;
+            }
             EnterGame(selectedDeck);
         }
 

@@ -1,120 +1,367 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using UnityEngine;
 
 namespace JunzhenDuijue
 {
-    /// <summary>
-    /// 驱动回合阶段：准备→收入→出牌→弃牌→回合结束。每阶段有 Start/Main/End 三步，供技能等挂接。
-    /// </summary>
     public static class BattlePhaseManager
     {
+        private const string LogPrefix = "[BattleFlow]";
         private static BattleState _state;
 
-        /// <summary>
-        /// 准备阶段-开始时（预留技能接口）。
-        /// </summary>
+        private static int _opponentPlannedAttackGeneral = int.MinValue;
+        private static int _opponentPlannedAttackSkill = int.MinValue;
+        private static string _opponentPlannedAttackSkillName = string.Empty;
+
         public static event Action<bool> OnPreparationStart;
-        /// <summary>
-        /// 准备阶段-效果触发时（预留技能接口）。
-        /// </summary>
         public static event Action<bool> OnPreparationMain;
-        /// <summary>
-        /// 准备阶段-结束时（预留技能接口）。
-        /// </summary>
         public static event Action<bool> OnPreparationEnd;
-        /// <summary>
-        /// 收入阶段-开始时（预留技能接口）。
-        /// </summary>
         public static event Action<bool> OnIncomeStart;
-        /// <summary>
-        /// 收入阶段-效果触发时（预留技能接口）。
-        /// </summary>
         public static event Action<bool> OnIncomeMain;
-        /// <summary>
-        /// 收入阶段-结束时（预留技能接口）。
-        /// </summary>
         public static event Action<bool> OnIncomeEnd;
-        /// <summary>
-        /// 弃牌阶段-开始时（预留技能接口）。
-        /// </summary>
-        public static event Action<bool> OnDiscardStart;
-        /// <summary>
-        /// 弃牌阶段-效果触发时：若手牌>上限则请求弹出弃牌选择；由 UI 在选完后调用 NotifyDiscardPhaseDone。
-        /// </summary>
-        public static event Action<bool, int> OnDiscardMain;
-        /// <summary>
-        /// 弃牌阶段-结束时（预留技能接口）。
-        /// </summary>
-        public static event Action<bool> OnDiscardEnd;
-        /// <summary>
-        /// 主要阶段-开始时（预留技能接口）。
-        /// </summary>
         public static event Action<bool> OnPrimaryStart;
-        /// <summary>
-        /// 主要阶段-效果触发时（预留技能接口）。
-        /// </summary>
         public static event Action<bool> OnPrimaryMain;
-        /// <summary>
-        /// 主要阶段-结束时（预留技能接口）。
-        /// </summary>
         public static event Action<bool> OnPrimaryEnd;
-        /// <summary>
-        /// 出牌阶段-开始时（预留技能接口）。
-        /// </summary>
         public static event Action<bool> OnPlayPhaseStart;
-        /// <summary>
-        /// 出牌阶段-效果触发时（预留技能接口）。
-        /// </summary>
         public static event Action<bool> OnPlayPhaseMain;
-        /// <summary>
-        /// 出牌阶段-结束时（预留技能接口）。
-        /// </summary>
         public static event Action<bool> OnPlayPhaseEnd;
+        public static event Action<bool> OnAttackSelectionRequested;
+        public static event Action<bool> OnDefenseStart;
+        public static event Action<bool> OnDefenseMain;
+        public static event Action<bool> OnDefenseEnd;
+        public static event Action<bool> OnResolveStart;
+        public static event Action<bool> OnResolveMain;
+        public static event Action<bool> OnResolveEnd;
+        public static event Action<bool> OnDiscardStart;
+        public static event Action<bool, int> OnDiscardMain;
+        public static event Action<bool> OnDiscardEnd;
+
+        public static BattleState GetState()
+        {
+            return _state;
+        }
 
         public static void Bind(BattleState state)
         {
             _state = state;
+            Log("Bind state: " + DescribeState());
+        }
+
+        public static void OnGameStart()
+        {
+            if (_state == null)
+                return;
+
+            BattleFlowLog.Clear();
+            string opener = "\u3010\u5168\u5c40\u3011\u786e\u5b9a\u5148\u624b\u73a9\u5bb6\u4e3a\uff1a" + (_state.PlayerGoesFirst ? "\u5df1\u65b9" : "\u654c\u65b9") + "\u3002";
+
+            Debug.Log("[BattlePhaseManager] ========== 游戏开始 ==========");
+            Debug.Log("[BattlePhaseManager] 先手: " + (_state.IsPlayerTurn ? "玩家" : "对手"));
+
+            BattleFlowPacing.AddLogThenContinue(opener, () =>
+            {
+                if (_state == null)
+                    return;
+
+                BattleState.Draw(_state.Player, BattleState.DefaultHandLimit);
+                BattleState.Draw(_state.Opponent, BattleState.DefaultHandLimit);
+                OfflineSkillEngine.RefreshContinuousState(_state);
+                LogGameStartSkillLinesThen(() =>
+                {
+                    if (_state == null)
+                        return;
+
+                    _state.CurrentPhase = BattlePhase.Preparation;
+                    _state.CurrentPhaseStep = PhaseStep.Start;
+                    Debug.Log("[BattlePhaseManager] --> 进入阶段: " + _state.CurrentPhase + " / " + _state.CurrentPhaseStep);
+                    RunPhaseStep();
+                });
+            });
+        }
+
+        public static void EndTurn()
+        {
+            if (_state == null)
+                return;
+
+            Debug.Log("[BattlePhaseManager] >>> EndTurn() 被调用");
+            Debug.Log("[BattlePhaseManager] 当前阶段: " + _state.CurrentPhase + " / " + _state.CurrentPhaseStep);
+            Debug.Log("[BattlePhaseManager] 当前行动方: " + (_state.IsPlayerTurn ? "玩家" : "对手"));
+            Debug.Log("[BattlePhaseManager] 回合数: " + _state.TurnNumber);
+
+            if (_state.CurrentPhase == BattlePhase.Primary && _state.CurrentPhaseStep == PhaseStep.Main)
+            {
+                _state.CurrentPhaseStep = PhaseStep.End;
+                RunPhaseStep();
+                return;
+            }
+
+            if (_state.CurrentPhase == BattlePhase.Main && _state.CurrentPhaseStep == PhaseStep.Main)
+            {
+                Debug.Log("[BattlePhaseManager] 出牌区卡牌数: " + _state.ActiveSide.PlayedThisPhase.Count);
+                if (_state.ActiveSide.PlayedThisPhase.Count > 0 && _state.PendingAttackSkillKind == SelectedSkillKind.None)
+                {
+                    Debug.Log("[BattlePhaseManager] >>> 触发攻击技能选择!");
+                    if (_state.IsPlayerTurn)
+                    {
+                        Debug.Log("[BattlePhaseManager] >>> 弹出攻击技能选择框 (等待玩家)");
+                        OnAttackSelectionRequested?.Invoke(true);
+                        GameUI.NotifyPhaseChanged();
+                        return;
+                    }
+
+                    Debug.Log("[BattlePhaseManager] >>> 对手自动选择攻击技能");
+                    AutoSelectAttackSkill(false);
+                }
+
+                _state.CurrentPhaseStep = PhaseStep.End;
+                Debug.Log("[BattlePhaseManager] --> 进入 End 步骤");
+                RunPhaseStep();
+                return;
+            }
+
+            if (_state.CurrentPhase == BattlePhase.Defense && _state.CurrentPhaseStep == PhaseStep.Main)
+            {
+                _state.CurrentPhaseStep = PhaseStep.End;
+                RunPhaseStep();
+            }
         }
 
         /// <summary>
-        /// 游戏开始：双方各摸 6 张，然后进入准备阶段。
+        /// 战报停顿改为异步后，<see cref="RunPhaseStep"/> 可能在首帧提前返回，阶段尚未到主动/出牌；
+        /// 在每次战报续跑结束时调用，以补执行原 <c>TurnEnd</c> 里针对对手的同步 <c>EndTurn</c> 循环。
         /// </summary>
-        public static void OnGameStart()
+        public static void TryOpponentAutoAdvanceAfterBattleFlowPacing()
         {
-            if (_state == null) return;
-            BattleState.Draw(_state.Player, 6);
-            BattleState.Draw(_state.Opponent, 6);
-            _state.CurrentPhase = BattlePhase.Preparation;
-            _state.CurrentPhaseStep = PhaseStep.Start;
+            if (_state == null)
+                return;
+            if (_state.IsPlayerTurn)
+                return;
+            if (!GameUI.IsOpponentTurnAutoEndEnabled())
+                return;
+
+            const int maxSteps = 64;
+            for (int i = 0; i < maxSteps; i++)
+            {
+                if (_state == null || _state.IsPlayerTurn || !GameUI.IsOpponentTurnAutoEndEnabled())
+                    break;
+                if (_state.CurrentPhase != BattlePhase.Primary && _state.CurrentPhase != BattlePhase.Main)
+                    break;
+                EndTurn();
+            }
+
+            GameUI.NotifyPhaseChanged();
+        }
+
+        public static void NotifyAttackSkillSelected(bool attackerIsPlayer, int generalIndex, int skillIndex, string skillName)
+        {
+            Debug.Log("[BattlePhaseManager] >>> NotifyAttackSkillSelected: " + skillName);
+            if (_state == null)
+                return;
+            if (_state.CurrentPhase != BattlePhase.Main || _state.CurrentPhaseStep != PhaseStep.Main)
+                return;
+            if (_state.IsPlayerTurn != attackerIsPlayer)
+                return;
+
+            SetAttackSkillSelection(generalIndex, skillIndex, skillName);
+            if (_state.PendingGenericAttackShapeChoicePending)
+            {
+                GameUI.OpenGenericAttackShapePopup(openedAfterConfigurePending: true);
+                GameUI.NotifyPhaseChanged();
+                return;
+            }
+
+            _state.CurrentPhaseStep = PhaseStep.End;
+            Debug.Log("[BattlePhaseManager] 攻击技能已选择，进入 Defense 阶段");
+            RunPhaseStep();
+            GameUI.NotifyPhaseChanged();
+        }
+
+        /// <summary>玩家在「通用攻击」多牌型弹窗中选定一项后调用（含策马失败回退后的二次选择）。</summary>
+        public static void CompletePlayerGenericAttackShapePick(int optionIndex)
+        {
+            if (_state == null)
+                return;
+            if (_state.CurrentPhase != BattlePhase.Main || _state.CurrentPhaseStep != PhaseStep.Main || !_state.IsPlayerTurn)
+                return;
+
+            var opts = GenericAttackShapes.BuildSortedOptions(_state.ActiveSide.PlayedThisPhase);
+            if (optionIndex < 0 || optionIndex >= opts.Count)
+                return;
+
+            _state.PendingGenericAttackOptionIndex = optionIndex;
+            _state.PendingGenericAttackShapeChoicePending = false;
+
+            _state.PendingAttackGeneralIndex = -1;
+            _state.PendingAttackSkillIndex = -1;
+            _state.PendingAttackSkillKind = SelectedSkillKind.GenericAttack;
+            _state.PendingAttackSkillName = "\u901a\u7528\u653b\u51fb";
+
+            OfflineSkillEngine.ConfigureAttackSkill(_state, true, -1, -1);
+
+            LogAttackSkillConfigured();
+            _state.CurrentPhaseStep = PhaseStep.End;
+            Debug.Log("[BattlePhaseManager] 通用攻击牌型已选定，进入 Defense 阶段");
+            RunPhaseStep();
+            GameUI.NotifyPhaseChanged();
+        }
+
+        public static void CancelPendingGenericAttackShapeChoice()
+        {
+            if (_state == null)
+                return;
+            _state.PendingGenericAttackShapeChoicePending = false;
+            _state.PendingGenericAttackOptionIndex = -1;
+        }
+
+        /// <summary>从「须选通用牌型」弹窗返回上一级时：清空已部分写入的待结算攻击，以便重新选将技或通用攻击。</summary>
+        public static void ResetAfterGenericShapePopupCancel()
+        {
+            if (_state == null)
+                return;
+            CancelPendingGenericAttackShapeChoice();
+            _state.PendingAttackBonus = 0;
+            _state.PendingBaseDamage = 0;
+            _state.PendingPostResolveDrawToAttacker = 0;
+            _state.PendingExtraPlayPhasesToGrant = 0;
+            _state.PendingCombatNote = string.Empty;
+            _state.PendingAttackSkillKind = SelectedSkillKind.None;
+            _state.PendingAttackSkillName = string.Empty;
+        }
+
+        private static void TryShowDefenseDeclareBanner(bool defenderIsPlayer, int generalIndex, int skillIndex)
+        {
+            if (_state == null || generalIndex < 0)
+                return;
+
+            SideState defSide = _state.GetSide(defenderIsPlayer);
+            if (generalIndex >= defSide.GeneralCardIds.Count)
+                return;
+
+            string cid = defSide.GeneralCardIds[generalIndex] ?? string.Empty;
+            SkillRuleEntry defRule = SkillRuleLoader.GetRule(cid, skillIndex);
+            string sk = defRule != null && !string.IsNullOrWhiteSpace(defRule.SkillName)
+                ? defRule.SkillName
+                : _state.PendingDefenseSkillName;
+            SkillEffectBanner.Show(
+                defenderIsPlayer,
+                true,
+                SkillEffectBanner.GetRoleNameFromCardId(cid),
+                sk,
+                "\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction);
+        }
+
+        public static void NotifyDefenseSkillSelected(bool defenderIsPlayer, int generalIndex, int skillIndex, string skillName)
+        {
+            Debug.Log("[BattlePhaseManager] >>> NotifyDefenseSkillSelected: " + skillName);
+            if (_state == null)
+                return;
+            if (_state.CurrentPhase != BattlePhase.Defense || _state.CurrentPhaseStep != PhaseStep.Main)
+                return;
+            if ((_state.IsPlayerTurn ? false : true) != defenderIsPlayer)
+                return;
+
+            _state.PendingDefenseGeneralIndex = generalIndex;
+            _state.PendingDefenseSkillIndex = skillIndex;
+            _state.PendingDefenseSkillName = string.IsNullOrWhiteSpace(skillName) ? "防御技" : skillName;
+            _state.PendingDefenseReduction = 1;
+            _state.PendingDefenseSkillKind = SelectedSkillKind.GeneralSkill;
+            Debug.Log("[BattlePhaseManager] 防御技能已选择，等待点击结束防御");
+            BattleFlowLog.Add(
+                FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u58f0\u660e\u9632\u5fa1\u6280\u3010" + _state.PendingDefenseSkillName + "\u3011\uff0c\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction + "\u3002");
+            TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex);
+            GameUI.NotifyPhaseChanged();
+        }
+
+        public static void NotifyDiscardPhaseDone(bool isPlayer, int[] handIndices)
+        {
+            Debug.Log("[BattlePhaseManager] >>> NotifyDiscardPhaseDone: " + (isPlayer ? "玩家" : "对手"));
+            if (_state == null)
+                return;
+            if (_state.CurrentPhase != BattlePhase.Discard || _state.CurrentPhaseStep != PhaseStep.Main)
+                return;
+
+            SideState side = isPlayer ? _state.Player : _state.Opponent;
+            int over = side.Hand.Count - _state.HandLimit;
+            if (over > 0)
+            {
+                if (handIndices != null && handIndices.Length == over)
+                {
+                    var indexList = new List<int>(handIndices);
+                    BattleState.DiscardFromHand(side, indexList);
+                    Debug.Log("[BattlePhaseManager] 弃牌完成，弃置 " + over + " 张");
+                }
+                else if (!isPlayer)
+                {
+                    var autoDiscard = new List<int>();
+                    for (int i = 0; i < over; i++)
+                        autoDiscard.Add(side.Hand.Count - 1 - i);
+                    BattleState.DiscardFromHand(side, autoDiscard);
+                    Debug.Log("[BattlePhaseManager] 对手自动弃牌 " + over + " 张");
+                }
+            }
+
+            _state.CurrentPhaseStep = PhaseStep.End;
             RunPhaseStep();
         }
 
-        /// <summary>
-        /// 执行当前阶段当前步骤，并自动进入下一步或下一阶段。
-        /// </summary>
+        public static void NotifyDiscardPhaseSkipPopup()
+        {
+            if (_state == null)
+                return;
+            if (_state.CurrentPhase != BattlePhase.Discard || _state.CurrentPhaseStep != PhaseStep.Main)
+                return;
+
+            _state.CurrentPhaseStep = PhaseStep.End;
+            RunPhaseStep();
+        }
+
         private static void RunPhaseStep()
         {
-            if (_state == null) return;
-            bool isPlayer = _state.IsPlayerTurn;
+            if (_state == null)
+                return;
+
+            bool attackerIsPlayer = _state.IsPlayerTurn;
+            bool defenderIsPlayer = !attackerIsPlayer;
+
+            Debug.Log("[BattlePhaseManager] RunPhaseStep: " + _state.CurrentPhase + " / " + _state.CurrentPhaseStep + " / " + (attackerIsPlayer ? "玩家" : "对手") + "行动");
 
             switch (_state.CurrentPhase)
             {
                 case BattlePhase.Preparation:
                     if (_state.CurrentPhaseStep == PhaseStep.Start)
                     {
-                        OnPreparationStart?.Invoke(isPlayer);
-                        _state.CurrentPhaseStep = PhaseStep.Main;
-                        RunPhaseStep();
+                        OnPreparationStart?.Invoke(attackerIsPlayer);
+                        BattleFlowPacing.AddLogThenContinue(
+                            FlowTurnBracket(attackerIsPlayer) + "\u56de\u5408\u5f00\u59cb\uff0c\u51c6\u5907\u9636\u6bb5\uff0c\u65e0\u4e8b\u53d1\u751f\u3002",
+                            () =>
+                            {
+                                if (_state == null)
+                                    return;
+                                _state.CurrentPhaseStep = PhaseStep.Main;
+                                RunPhaseStep();
+                            });
                         return;
                     }
+
                     if (_state.CurrentPhaseStep == PhaseStep.Main)
                     {
-                        OnPreparationMain?.Invoke(isPlayer);
-                        _state.CurrentPhaseStep = PhaseStep.End;
-                        RunPhaseStep();
+                        OnPreparationMain?.Invoke(attackerIsPlayer);
+                        BattleFlowPacing.AddLogThenContinue(
+                            FlowTurnBracket(attackerIsPlayer) + "\u51c6\u5907\u9636\u6bb5\u8fdb\u884c\u4e2d\uff0c\u65e0\u4e8b\u53d1\u751f\u3002",
+                            () =>
+                            {
+                                if (_state == null)
+                                    return;
+                                _state.CurrentPhaseStep = PhaseStep.End;
+                                RunPhaseStep();
+                            });
                         return;
                     }
-                    OnPreparationEnd?.Invoke(isPlayer);
+
+                    OnPreparationEnd?.Invoke(attackerIsPlayer);
                     _state.CurrentPhase = BattlePhase.Income;
                     _state.CurrentPhaseStep = PhaseStep.Start;
                     RunPhaseStep();
@@ -123,22 +370,45 @@ namespace JunzhenDuijue
                 case BattlePhase.Income:
                     if (_state.CurrentPhaseStep == PhaseStep.Start)
                     {
-                        OnIncomeStart?.Invoke(isPlayer);
-                        _state.CurrentPhaseStep = PhaseStep.Main;
-                        RunPhaseStep();
+                        OnIncomeStart?.Invoke(attackerIsPlayer);
+                        BattleFlowPacing.AddLogThenContinue(
+                            FlowTurnBracket(attackerIsPlayer) + "\u6536\u5165\u9636\u6bb5\u5f00\u59cb\u3002",
+                            () =>
+                            {
+                                if (_state == null)
+                                    return;
+                                _state.CurrentPhaseStep = PhaseStep.Main;
+                                RunPhaseStep();
+                            });
                         return;
                     }
+
                     if (_state.CurrentPhaseStep == PhaseStep.Main)
                     {
-                        OnIncomeMain?.Invoke(isPlayer);
-                        var side = _state.ActiveSide;
-                        BattleState.Draw(side, 3);
-                        side.Morale = Mathf.Min(BattleState.MaxMorale, side.Morale + 1);
-                        _state.CurrentPhaseStep = PhaseStep.End;
-                        RunPhaseStep();
+                        OnIncomeMain?.Invoke(attackerIsPlayer);
+                        SideState side = _state.ActiveSide;
+                        int drawCnt = Mathf.Max(1, side.GetFaceUpGeneralCount());
+                        BattleState.Draw(side, drawCnt);
+
+                        bool skipFirstMorale = _state.TurnNumber == 1 && _state.IsPlayerTurn == _state.PlayerGoesFirst;
+                        if (!skipFirstMorale)
+                            side.Morale = Mathf.Min(side.MoraleCap, side.Morale + 1);
+
+                        string incomeLine = skipFirstMorale
+                            ? FlowTurnBracket(attackerIsPlayer) + "\u6536\u5165\u9636\u6bb5\uff0c\u6478" + drawCnt + "\u5f20\u724c\uff0c\u9996\u56de\u5408\u5148\u624b\u8df3\u8fc7\u58eb\u6c14\u56de\u590d\u3002"
+                            : FlowTurnBracket(attackerIsPlayer) + "\u6536\u5165\u9636\u6bb5\uff0c\u6478" + drawCnt + "\u5f20\u724c\uff0c\u58eb\u6c14+1\u3002";
+
+                        BattleFlowPacing.AddLogThenContinue(incomeLine, () =>
+                        {
+                            if (_state == null)
+                                return;
+                            _state.CurrentPhaseStep = PhaseStep.End;
+                            RunPhaseStep();
+                        });
                         return;
                     }
-                    OnIncomeEnd?.Invoke(isPlayer);
+
+                    OnIncomeEnd?.Invoke(attackerIsPlayer);
                     _state.CurrentPhase = BattlePhase.Primary;
                     _state.CurrentPhaseStep = PhaseStep.Start;
                     RunPhaseStep();
@@ -147,18 +417,21 @@ namespace JunzhenDuijue
                 case BattlePhase.Primary:
                     if (_state.CurrentPhaseStep == PhaseStep.Start)
                     {
-                        OnPrimaryStart?.Invoke(isPlayer);
+                        OnPrimaryStart?.Invoke(attackerIsPlayer);
+                        BattleFlowLog.Add(FlowTurnBracket(attackerIsPlayer) + "\u4e3b\u52a8\u9636\u6bb5\uff0c\u53ef\u53d1\u52a8\u4e3b\u52a8\u6280\u6216\u7ed3\u675f\u8be5\u9636\u6bb5\u3002");
                         _state.CurrentPhaseStep = PhaseStep.Main;
                         GameUI.NotifyPhaseChanged();
                         return;
                     }
+
                     if (_state.CurrentPhaseStep == PhaseStep.Main)
                     {
-                        OnPrimaryMain?.Invoke(isPlayer);
+                        OnPrimaryMain?.Invoke(attackerIsPlayer);
                         GameUI.NotifyPhaseChanged();
                         return;
                     }
-                    OnPrimaryEnd?.Invoke(isPlayer);
+
+                    OnPrimaryEnd?.Invoke(attackerIsPlayer);
                     _state.CurrentPlayPhaseIndex = 0;
                     _state.CurrentPhase = BattlePhase.Main;
                     _state.CurrentPhaseStep = PhaseStep.Start;
@@ -168,143 +441,612 @@ namespace JunzhenDuijue
                 case BattlePhase.Main:
                     if (_state.CurrentPhaseStep == PhaseStep.Start)
                     {
-                        OnPlayPhaseStart?.Invoke(isPlayer);
+                        OnPlayPhaseStart?.Invoke(attackerIsPlayer);
+                        _state.ClearPendingCombat();
+                        BattleFlowLog.Add(FlowTurnBracket(attackerIsPlayer) + "\u51fa\u724c\u9636\u6bb5\u5f00\u59cb\u3002");
+                        if (!attackerIsPlayer)
+                            AutoPlayForOpponent();
                         _state.CurrentPhaseStep = PhaseStep.Main;
                         GameUI.NotifyPhaseChanged();
                         return;
                     }
+
                     if (_state.CurrentPhaseStep == PhaseStep.Main)
                     {
-                        OnPlayPhaseMain?.Invoke(isPlayer);
+                        OnPlayPhaseMain?.Invoke(attackerIsPlayer);
                         GameUI.NotifyPhaseChanged();
                         return;
                     }
-                    OnPlayPhaseEnd?.Invoke(isPlayer);
-                    var activeSide = _state.ActiveSide;
-                    foreach (var c in activeSide.PlayedThisPhase)
-                        activeSide.DiscardPile.Add(c);
-                    activeSide.PlayedThisPhase.Clear();
-                    _state.CurrentPlayPhaseIndex++;
-                    if (_state.CurrentPlayPhaseIndex < _state.TotalPlayPhasesThisTurn)
+
+                    OnPlayPhaseEnd?.Invoke(attackerIsPlayer);
+                    if (_state.ActiveSide.PlayedThisPhase.Count > 0)
                     {
-                        _state.CurrentPhase = BattlePhase.Main;
+                        if (_state.PendingAttackSkillKind == SelectedSkillKind.None)
+                            SetAttackSkillSelection(-1, -1, "通用攻击");
+
+                        _state.CurrentPhase = BattlePhase.Defense;
                         _state.CurrentPhaseStep = PhaseStep.Start;
                         RunPhaseStep();
                         return;
                     }
-                    _state.CurrentPhase = BattlePhase.Discard;
+
+                    AdvanceFromPlayPhase();
+                    return;
+
+                case BattlePhase.Defense:
+                    Debug.Log("[BattlePhaseManager] ========== 进入防御阶段 ==========");
+                    Debug.Log("[BattlePhaseManager] 攻击方: " + (attackerIsPlayer ? "玩家" : "对手"));
+                    Debug.Log("[BattlePhaseManager] 防御方: " + (defenderIsPlayer ? "玩家" : "对手"));
+                    Debug.Log("[BattlePhaseManager] IsPlayerTurn: " + (_state.IsPlayerTurn ? "玩家" : "对手"));
+                    if (_state.CurrentPhaseStep == PhaseStep.Start)
+                    {
+                        BattleFlowPacing.AddLogThenContinue(
+                            FlowTurnBracket(attackerIsPlayer) + (defenderIsPlayer ? "\u5df1\u65b9\u73a9\u5bb6" : "\u654c\u65b9") + "\u8fdb\u5165\u9632\u5fa1\u9636\u6bb5\u3002",
+                            () =>
+                            {
+                                if (_state == null)
+                                    return;
+                                OnDefenseStart?.Invoke(defenderIsPlayer);
+                                _state.CurrentPhaseStep = PhaseStep.Main;
+                                Debug.Log("[BattlePhaseManager] --> 防御阶段 Start -> Main");
+                                Debug.Log("[BattlePhaseManager] >>> 调用 RunPhaseStep() 进入 Defense/Main");
+                                RunPhaseStep();
+                                Debug.Log("[BattlePhaseManager] >>> Defense/Main 返回");
+                            });
+                        return;
+                    }
+
+                    if (_state.CurrentPhaseStep == PhaseStep.Main)
+                    {
+                        Debug.Log("[BattlePhaseManager] 防御阶段 Main 步骤, defenderIsPlayer=" + defenderIsPlayer);
+                        Debug.Log("[BattlePhaseManager] !defenderIsPlayer = " + (!defenderIsPlayer));
+                        OnDefenseMain?.Invoke(defenderIsPlayer);
+                        Debug.Log("[BattlePhaseManager] >>> OnDefenseMain 已调用");
+                        if (!defenderIsPlayer)
+                        {
+                            Debug.Log("[BattlePhaseManager] >>> [分支1] 对手自动选择防御技能");
+                            AutoSelectDefenseSkill(false);
+                            Debug.Log("[BattlePhaseManager] >>> 设置 CurrentPhaseStep = End");
+                            _state.CurrentPhaseStep = PhaseStep.End;
+                            Debug.Log("[BattlePhaseManager] >>> 调用 RunPhaseStep() 进入 End 步骤");
+                            RunPhaseStep();
+                            Debug.Log("[BattlePhaseManager] >>> RunPhaseStep 返回");
+                            return;
+                        }
+                        else
+                        {
+                            Debug.Log("[BattlePhaseManager] >>> [分支2] 玩家是防御方，等待玩家结束防御");
+                        }
+
+                        Debug.Log("[BattlePhaseManager] >>> 等待玩家结束防御 (点击结束防御按钮)");
+                        Debug.Log("[BattlePhaseManager] >>> 调用 GameUI.NotifyPhaseChanged()");
+                        GameUI.NotifyPhaseChanged();
+                        Debug.Log("[BattlePhaseManager] >>> NotifyPhaseChanged 返回");
+                        return;
+                    }
+
+                    OnDefenseEnd?.Invoke(defenderIsPlayer);
+                    _state.CurrentPhase = BattlePhase.Resolve;
                     _state.CurrentPhaseStep = PhaseStep.Start;
                     RunPhaseStep();
                     return;
 
-                case BattlePhase.Discard:
+                case BattlePhase.Resolve:
                     if (_state.CurrentPhaseStep == PhaseStep.Start)
                     {
-                        OnDiscardStart?.Invoke(isPlayer);
-                        _state.CurrentPhaseStep = PhaseStep.Main;
-                        RunPhaseStep();
+                        OnResolveStart?.Invoke(attackerIsPlayer);
+                        BattleFlowPacing.AddLogThenContinue(
+                            FlowTurnBracket(attackerIsPlayer) + "\u7ed3\u7b97\u9636\u6bb5\u5f00\u59cb\u3002",
+                            () =>
+                            {
+                                if (_state == null)
+                                    return;
+                                _state.CurrentPhaseStep = PhaseStep.Main;
+                                RunPhaseStep();
+                            });
                         return;
                     }
+
                     if (_state.CurrentPhaseStep == PhaseStep.Main)
                     {
-                        var side = _state.ActiveSide;
-                        int over = side.Hand.Count - _state.HandLimit;
-                        if (over > 0)
-                        {
-                            OnDiscardMain?.Invoke(isPlayer, over);
-                            return;
-                        }
+                        OnResolveMain?.Invoke(attackerIsPlayer);
+                        ResolveCurrentCombat();
                         _state.CurrentPhaseStep = PhaseStep.End;
                         RunPhaseStep();
                         return;
                     }
-                    OnDiscardEnd?.Invoke(isPlayer);
+
+                    OnResolveEnd?.Invoke(attackerIsPlayer);
+                    _state.FinishCurrentPlayPhaseCombat();
+                    AdvanceFromPlayPhase();
+                    return;
+
+                case BattlePhase.Discard:
+                    Debug.Log("[BattlePhaseManager] ========== 进入弃牌阶段 ==========");
+                    Debug.Log("[BattlePhaseManager] 行动方: " + (attackerIsPlayer ? "玩家" : "对手"));
+                    if (_state.CurrentPhaseStep == PhaseStep.Start)
+                    {
+                        OnDiscardStart?.Invoke(attackerIsPlayer);
+                        BattleFlowPacing.AddLogThenContinue(
+                            FlowTurnBracket(attackerIsPlayer) + "\u5f03\u724c\u9636\u6bb5\u5f00\u59cb\u3002",
+                            () =>
+                            {
+                                if (_state == null)
+                                    return;
+                                _state.CurrentPhaseStep = PhaseStep.Main;
+                                Debug.Log("[BattlePhaseManager] --> 弃牌阶段 Start -> Main");
+                                RunPhaseStep();
+                            });
+                        return;
+                    }
+
+                    if (_state.CurrentPhaseStep == PhaseStep.Main)
+                    {
+                        SideState side = _state.ActiveSide;
+                        int over = side.Hand.Count - _state.HandLimit;
+                        Debug.Log("[BattlePhaseManager] 手牌: " + side.Hand.Count + " / 上限: " + _state.HandLimit + " -> 超出: " + over);
+                        if (over > 0)
+                        {
+                            Debug.Log("[BattlePhaseManager] >>> 需要弃置 " + over + " 张牌，弹出弃牌框");
+                            OnDiscardMain?.Invoke(attackerIsPlayer, over);
+                            return;
+                        }
+
+                        Debug.Log("[BattlePhaseManager] 无需弃牌，直接进入 End");
+                        _state.CurrentPhaseStep = PhaseStep.End;
+                        RunPhaseStep();
+                        return;
+                    }
+
+                    OnDiscardEnd?.Invoke(attackerIsPlayer);
+                    OfflineSkillEngine.TryTriggerHandEmptyPassive(_state, attackerIsPlayer, out _);
+                    if (OfflineSkillEngine.TryApplyDiscardEndRenZheWuDi(_state, attackerIsPlayer, out string renZheMsg) && !string.IsNullOrEmpty(renZheMsg))
+                        BattleFlowLog.Add(FlowTurnBracket(attackerIsPlayer) + "\u5f03\u724c\u9636\u6bb5\u7ed3\u675f\uff0c\u3010\u4ec1\u8005\u65e0\u654c\u3011\uff1a" + renZheMsg);
+
                     _state.CurrentPhase = BattlePhase.TurnEnd;
                     _state.CurrentPhaseStep = PhaseStep.Main;
                     RunPhaseStep();
                     return;
 
                 case BattlePhase.TurnEnd:
+                    Debug.Log("[BattlePhaseManager] ========== 回合结束 ==========");
+                    _state.CompleteCurrentTurn();
                     _state.IsPlayerTurn = !_state.IsPlayerTurn;
-                    _state.ActiveSide.ResetMoraleUsedThisTurn();
-                    _state.TotalPlayPhasesThisTurn = 1;
-                    _state.CurrentPlayPhaseIndex = 0;
+                    _state.TurnNumber++;
+                    Debug.Log("[BattlePhaseManager] 换边 -> " + (_state.IsPlayerTurn ? "玩家" : "对手") + " 行动");
+                    Debug.Log("[BattlePhaseManager] 进入第 " + _state.TurnNumber + " 回合");
                     _state.CurrentPhase = BattlePhase.Preparation;
                     _state.CurrentPhaseStep = PhaseStep.Start;
 
                     if (!_state.IsPlayerTurn && GameUI.IsOpponentTurnAutoEndEnabled())
                     {
+                        Debug.Log("[BattlePhaseManager] >>> 对手回合自动执行");
                         RunPhaseStep();
-                        while (_state != null && !_state.IsPlayerTurn && GameUI.IsOpponentTurnAutoEndEnabled() &&
-                               (_state.CurrentPhase == BattlePhase.Primary || _state.CurrentPhase == BattlePhase.Main))
-                            EndTurn();
+                        TryOpponentAutoAdvanceAfterBattleFlowPacing();
                         return;
                     }
+
+                    Debug.Log("[BattlePhaseManager] --> 进入玩家回合 Preparation");
                     RunPhaseStep();
                     GameUI.NotifyPhaseChanged();
                     return;
             }
         }
 
-        /// <summary>
-        /// 玩家点击结束按钮：主要阶段时进入主要阶段结束→无技能则到出牌阶段；出牌阶段时进入当前出牌阶段结束→无技能则下一段出牌或弃牌阶段。
-        /// </summary>
-        public static void EndTurn()
+        private static void AdvanceFromPlayPhase()
         {
-            if (_state == null) return;
-            if (_state.CurrentPhase == BattlePhase.Primary && _state.CurrentPhaseStep == PhaseStep.Main)
+            _state.ActiveSide.MovePlayedCardsToDiscard();
+            _state.ClearPendingCombat();
+            _state.CurrentPlayPhaseIndex++;
+            if (_state.CurrentPlayPhaseIndex < _state.TotalPlayPhasesThisTurn)
             {
-                _state.CurrentPhaseStep = PhaseStep.End;
+                _state.CurrentPhase = BattlePhase.Main;
+                _state.CurrentPhaseStep = PhaseStep.Start;
                 RunPhaseStep();
                 return;
             }
-            if (_state.CurrentPhase == BattlePhase.Main && _state.CurrentPhaseStep == PhaseStep.Main)
-            {
-                _state.CurrentPhaseStep = PhaseStep.End;
-                RunPhaseStep();
-                return;
-            }
-        }
 
-        /// <summary>
-        /// 弃牌阶段中，玩家在 UI 完成弃牌选择并确认后调用；indices 为手牌中要弃掉的索引列表。对手传 null 表示自动弃掉前 N 张。
-        /// </summary>
-        public static void NotifyDiscardPhaseDone(bool isPlayer, int[] handIndices)
-        {
-            if (_state == null) return;
-            if (_state.CurrentPhase != BattlePhase.Discard || _state.CurrentPhaseStep != PhaseStep.Main)
-                return;
-            var side = isPlayer ? _state.Player : _state.Opponent;
-            int over = side.Hand.Count - _state.HandLimit;
-            if (over > 0)
-            {
-                if (handIndices != null && handIndices.Length == over)
-                {
-                    var list = new System.Collections.Generic.List<int>(handIndices);
-                    BattleState.DiscardFromHand(side, list);
-                }
-                else if (!isPlayer)
-                {
-                    var autoList = new System.Collections.Generic.List<int>();
-                    for (int i = 0; i < over; i++)
-                        autoList.Add(side.Hand.Count - 1 - i);
-                    BattleState.DiscardFromHand(side, autoList);
-                }
-            }
-            _state.CurrentPhaseStep = PhaseStep.End;
+            _state.CurrentPhase = BattlePhase.Discard;
+            _state.CurrentPhaseStep = PhaseStep.Start;
             RunPhaseStep();
         }
 
-        /// <summary>
-        /// 弃牌阶段 Main 中不需要弹窗（手牌已<=上限）或已跳过弹窗时，由 UI 调用以继续。
-        /// </summary>
-        public static void NotifyDiscardPhaseSkipPopup()
+        private static void ResolveCurrentCombat()
         {
-            if (_state == null) return;
-            if (_state.CurrentPhase != BattlePhase.Discard || _state.CurrentPhaseStep != PhaseStep.Main)
+            int defenseReduction = _state.PendingIgnoreDefenseReduction ? 0 : _state.PendingDefenseReduction;
+            int damage = Mathf.Max(0, _state.PendingBaseDamage + _state.PendingAttackBonus - defenseReduction);
+            string attackName = string.IsNullOrWhiteSpace(_state.PendingAttackSkillName) ? "通用攻击" : _state.PendingAttackSkillName;
+            string defenseName = string.IsNullOrWhiteSpace(_state.PendingDefenseSkillName) ? "未防御" : _state.PendingDefenseSkillName;
+            DamageCategory dmgCat = _state.PendingDamageCategory == DamageCategory.None ? DamageCategory.Generic : _state.PendingDamageCategory;
+            DamageElement dmgEl = _state.PendingDamageElement;
+            string summary = attackName + "\u7ed3\u7b97\uff1a" + DamageTypeLabels.FormatResolvedDamageLine(damage, dmgCat, dmgEl);
+
+            if (_state.PendingDefenseReduction > 0)
+            {
+                if (_state.PendingIgnoreDefenseReduction)
+                    summary += "\uff0c\u9632\u5fa1\u51cf\u514d\u672a\u751f\u6548";
+                else
+                    summary += "\uff08\u5df2\u8ba1\u5165\u9632\u5fa1\u51cf\u514d\uff09";
+            }
+
+            if (damage > 0)
+            {
+                if (_state.IsPlayerTurn)
+                    GameUI.ApplyDamageToOpponent(damage);
+                else
+                    GameUI.ApplyDamageToPlayer(damage);
+            }
+
+            var active = _state.ActiveSide;
+            if (_state.PendingPostResolveDrawToAttacker > 0)
+                BattleState.Draw(active, _state.PendingPostResolveDrawToAttacker);
+            if (_state.PendingPostResolveHealToAttacker > 0)
+                active.CurrentHp = Mathf.Min(active.MaxHp, active.CurrentHp + _state.PendingPostResolveHealToAttacker);
+            if (_state.PendingPostResolveMoraleToAttacker > 0)
+                active.Morale = Mathf.Min(active.MoraleCap, active.Morale + _state.PendingPostResolveMoraleToAttacker);
+
+            if (_state.PendingExtraPlayPhasesToGrant > 0)
+            {
+                _state.TotalPlayPhasesThisTurn += _state.PendingExtraPlayPhasesToGrant;
+                _state.PendingExtraPlayPhasesToGrant = 0;
+            }
+
+            ToastUI.Show(summary + "\uff08\u9632\u5fa1\uff1a" + defenseName + "\uff09", 2.4f);
+
+            var logLine = new StringBuilder();
+            logLine.Append(FlowTurnBracket(_state.IsPlayerTurn)).Append("\u7ed3\u7b97\u9636\u6bb5\uff0c");
+            logLine.Append("\u3010").Append(attackName).Append("\u3011");
+            logLine.Append("\u5bf9").Append(_state.IsPlayerTurn ? "\u654c\u65b9" : "\u5df1\u65b9\u73a9\u5bb6");
+            logLine.Append(DamageTypeLabels.FormatResolvedDamageLine(damage, dmgCat, dmgEl));
+            logLine.Append("\uff08\u9632\u5fa1\uff1a").Append(defenseName).Append("\uff09");
+            if (_state.PendingPostResolveDrawToAttacker > 0)
+                logLine.Append("\uff0c\u653b\u51fb\u65b9\u6478").Append(_state.PendingPostResolveDrawToAttacker).Append("\u5f20\u724c");
+            if (_state.PendingPostResolveHealToAttacker > 0)
+                logLine.Append("\uff0c\u653b\u51fb\u65b9\u56de\u590d").Append(_state.PendingPostResolveHealToAttacker).Append("\u70b9\u751f\u547d");
+            if (_state.PendingPostResolveMoraleToAttacker > 0)
+                logLine.Append("\uff0c\u653b\u51fb\u65b9\u58eb\u6c14+").Append(_state.PendingPostResolveMoraleToAttacker);
+            logLine.Append("\u3002");
+            BattleFlowLog.Add(logLine.ToString());
+        }
+
+        private static void ClearOpponentAttackPlan()
+        {
+            _opponentPlannedAttackGeneral = int.MinValue;
+            _opponentPlannedAttackSkill = int.MinValue;
+            _opponentPlannedAttackSkillName = string.Empty;
+        }
+
+        private static List<(int generalIndex, int skillIndex, string skillName)> BuildAttackSkillOptionsForSide(bool sideIsPlayer)
+        {
+            var list = new List<(int, int, string)> { (-1, -1, "\u901a\u7528\u653b\u51fb") };
+            if (_state == null)
+                return list;
+
+            SideState side = _state.GetSide(sideIsPlayer);
+            for (int g = 0; g < side.GeneralCardIds.Count; g++)
+            {
+                if (!side.IsGeneralFaceUp(g))
+                    continue;
+
+                CardData data = CardTableLoader.GetCard(CardTableLoader.CardIdToNumber(side.GeneralCardIds[g]));
+                if (data == null)
+                    continue;
+
+                for (int sk = 0; sk < 3; sk++)
+                {
+                    if (!SkillHasTag(data, sk, "\u653b\u51fb\u6280"))
+                        continue;
+
+                    string shotKey = sideIsPlayer + "_" + g + "_" + sk;
+                    if (SkillHasTag(data, sk, "\u7834\u519b\u6280") && side.UsedOneShotSkills.Contains(shotKey))
+                        continue;
+
+                    list.Add((g, sk, GetSkillName(data, sk)));
+                }
+            }
+
+            return list;
+        }
+
+        private static void AutoPlayForOpponent()
+        {
+            ClearOpponentAttackPlan();
+
+            if (_state == null || _state.IsPlayerTurn)
                 return;
-            _state.CurrentPhaseStep = PhaseStep.End;
-            RunPhaseStep();
+
+            SideState side = _state.ActiveSide;
+            if (side.Hand.Count <= 0)
+                return;
+
+            var options = BuildAttackSkillOptionsForSide(false);
+            BattleAttackPreview.FindBestPlayAndAttack(_state, side, false, options, out List<int> indices, out int gen, out int sk, out string nm);
+
+            if (indices == null || indices.Count == 0)
+                return;
+
+            foreach (int hi in indices.OrderByDescending(i => i))
+            {
+                side.PlayedThisPhase.Add(side.Hand[hi]);
+                side.Hand.RemoveAt(hi);
+            }
+
+            _opponentPlannedAttackGeneral = gen;
+            _opponentPlannedAttackSkill = sk;
+            _opponentPlannedAttackSkillName = string.IsNullOrWhiteSpace(nm) ? "\u901a\u7528\u653b\u51fb" : nm;
+        }
+
+        private static void AutoSelectAttackSkill(bool attackerIsPlayer)
+        {
+            if (!attackerIsPlayer && _opponentPlannedAttackGeneral != int.MinValue)
+            {
+                MaybeAutoPickCeMaVariantBeforeSelection(_opponentPlannedAttackGeneral, _opponentPlannedAttackSkill, false);
+                SetAttackSkillSelection(_opponentPlannedAttackGeneral, _opponentPlannedAttackSkill, _opponentPlannedAttackSkillName);
+                ClearOpponentAttackPlan();
+                return;
+            }
+
+            if (TryFindTaggedSkill(attackerIsPlayer, "攻击技", out int generalIndex, out int skillIndex, out string skillName))
+            {
+                MaybeAutoPickCeMaVariantBeforeSelection(generalIndex, skillIndex, attackerIsPlayer);
+                SetAttackSkillSelection(generalIndex, skillIndex, skillName);
+                return;
+            }
+
+            SetAttackSkillSelection(-1, -1, "\u901a\u7528\u653b\u51fb");
+        }
+
+        private static void MaybeAutoPickCeMaVariantBeforeSelection(int generalIndex, int skillIndex, bool attackerIsPlayer)
+        {
+            if (_state == null || generalIndex < 0)
+                return;
+
+            var side = _state.GetSide(attackerIsPlayer);
+            if (generalIndex >= side.GeneralCardIds.Count)
+                return;
+
+            string cardId = side.GeneralCardIds[generalIndex] ?? string.Empty;
+            if (!string.Equals(SkillRuleHelper.MakeSkillKey(cardId, skillIndex), "NO002_0", StringComparison.Ordinal))
+                return;
+
+            OfflineSkillEngine.AutoPickCeMaPatternVariant(_state, _state.ActiveSide.PlayedThisPhase);
+        }
+
+        private static void AutoSelectDefenseSkill(bool defenderIsPlayer)
+        {
+            if (TryFindTaggedSkill(defenderIsPlayer, "防御技", out int generalIndex, out int skillIndex, out string skillName))
+            {
+                _state.PendingDefenseGeneralIndex = generalIndex;
+                _state.PendingDefenseSkillIndex = skillIndex;
+                _state.PendingDefenseSkillName = skillName;
+                _state.PendingDefenseReduction = 1;
+                _state.PendingDefenseSkillKind = SelectedSkillKind.GeneralSkill;
+                BattleFlowLog.Add(
+                    FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff08\u81ea\u52a8\uff09\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u9009\u7528\u9632\u5fa1\u6280\u3010" + skillName + "\u3011\uff0c\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction + "\u3002");
+                TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex);
+            }
+            else
+            {
+                BattleFlowLog.Add(
+                    FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff08\u81ea\u52a8\uff09\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u672a\u5339\u914d\u9632\u5fa1\u6280\uff08\u6309\u672a\u9632\u5fa1\u7ed3\u7b97\uff09\u3002");
+            }
+        }
+
+        private static void SetAttackSkillSelection(int generalIndex, int skillIndex, string skillName)
+        {
+            if (generalIndex >= 0)
+            {
+                _state.PendingGenericAttackOptionIndex = -1;
+                _state.PendingGenericAttackShapeChoicePending = false;
+                _state.PendingGenericAttackShapeDisplayName = string.Empty;
+            }
+
+            _state.PendingAttackGeneralIndex = generalIndex;
+            _state.PendingAttackSkillIndex = skillIndex;
+            _state.PendingAttackSkillName = string.IsNullOrWhiteSpace(skillName) ? "通用攻击" : skillName;
+            _state.PendingAttackSkillKind = generalIndex >= 0 ? SelectedSkillKind.GeneralSkill : SelectedSkillKind.GenericAttack;
+
+            OfflineSkillEngine.ConfigureAttackSkill(_state, _state.IsPlayerTurn, generalIndex, skillIndex);
+            if (_state.PendingGenericAttackShapeChoicePending)
+                return;
+
+            LogAttackSkillConfigured();
+        }
+
+        private static bool TryFindTaggedSkill(bool sideIsPlayer, string tag, out int generalIndex, out int skillIndex, out string skillName)
+        {
+            generalIndex = -1;
+            skillIndex = -1;
+            skillName = string.Empty;
+
+            if (_state == null)
+                return false;
+
+            SideState side = sideIsPlayer ? _state.Player : _state.Opponent;
+            for (int cardIndex = 0; cardIndex < side.GeneralCardIds.Count; cardIndex++)
+            {
+                if (!side.IsGeneralFaceUp(cardIndex))
+                    continue;
+
+                CardData data = CardTableLoader.GetCard(CardTableLoader.CardIdToNumber(side.GeneralCardIds[cardIndex]));
+                if (data == null)
+                    continue;
+
+                for (int currentSkillIndex = 0; currentSkillIndex < 3; currentSkillIndex++)
+                {
+                    if (!SkillHasTag(data, currentSkillIndex, tag))
+                        continue;
+
+                    string key = sideIsPlayer + "_" + cardIndex + "_" + currentSkillIndex;
+                    if (SkillHasTag(data, currentSkillIndex, "破军技") && side.UsedOneShotSkills.Contains(key))
+                        continue;
+
+                    generalIndex = cardIndex;
+                    skillIndex = currentSkillIndex;
+                    skillName = GetSkillName(data, currentSkillIndex);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool SkillHasTag(CardData data, int skillIndex, string tag)
+        {
+            if (data == null || string.IsNullOrWhiteSpace(tag))
+                return false;
+
+            if (!string.IsNullOrWhiteSpace(data.CardId) && SkillRuleLoader.HasTag(data.CardId, skillIndex, tag))
+                return true;
+
+            List<string> tags = skillIndex switch
+            {
+                0 => data.SkillTags1,
+                1 => data.SkillTags2,
+                2 => data.SkillTags3,
+                _ => null
+            };
+
+            if (tags == null)
+                return false;
+
+            for (int i = 0; i < tags.Count; i++)
+            {
+                if (string.Equals(tags[i], tag, System.StringComparison.Ordinal))
+                    return true;
+            }
+            return false;
+        }
+
+        private static string GetSkillName(CardData data, int skillIndex)
+        {
+            return skillIndex switch
+            {
+                0 => data.SkillName1 ?? string.Empty,
+                1 => data.SkillName2 ?? string.Empty,
+                2 => data.SkillName3 ?? string.Empty,
+                _ => string.Empty
+            };
+        }
+
+        private static void Log(string message)
+        {
+            Debug.Log(LogPrefix + " " + message);
+        }
+
+        private static string FlowTurnBracket(bool isPlayerTurn) =>
+            isPlayerTurn ? "\u3010\u5df1\u65b9\u56de\u5408\u3011" : "\u3010\u654c\u65b9\u56de\u5408\u3011";
+
+        private static string FlowAttackerActor(bool attackerIsPlayer) =>
+            attackerIsPlayer ? "\u5df1\u65b9\u73a9\u5bb6" : "\u654c\u65b9";
+
+        private static string FlowDefenderActor(bool defenderIsPlayer) =>
+            defenderIsPlayer ? "\u5df1\u65b9\u73a9\u5bb6" : "\u654c\u65b9";
+
+        private static void LogGameStartSkillLinesThen(Action done)
+        {
+            if (_state == null)
+            {
+                done?.Invoke();
+                return;
+            }
+
+            List<GameStartSkillLineEntry> entries = GameStartSkillNodeFlow.BuildSortedEntries(_state);
+            GameStartSkillNodeFlow.RunSequence(entries, done);
+        }
+
+        private static string GetAttackSkillRuleDescriptionFromCard(BattleState st)
+        {
+            if (st == null)
+                return string.Empty;
+
+            int g = st.PendingAttackGeneralIndex;
+            int s = st.PendingAttackSkillIndex;
+            if (g < 0 || s < 0 || s > 2)
+                return string.Empty;
+
+            SideState side = st.ActiveSide;
+            if (g >= side.GeneralCardIds.Count)
+                return string.Empty;
+
+            CardData data = CardTableLoader.GetCard(CardTableLoader.CardIdToNumber(side.GeneralCardIds[g]));
+            if (data == null)
+                return string.Empty;
+
+            return s switch
+            {
+                0 => data.SkillDesc1 ?? string.Empty,
+                1 => data.SkillDesc2 ?? string.Empty,
+                2 => data.SkillDesc3 ?? string.Empty,
+                _ => string.Empty,
+            };
+        }
+
+        public static void LogAttackSkillConfigured()
+        {
+            if (_state == null)
+                return;
+
+            bool atkPlayer = _state.IsPlayerTurn;
+            string turn = FlowTurnBracket(atkPlayer);
+            string actor = FlowAttackerActor(atkPlayer);
+            var cards = _state.ActiveSide.PlayedThisPhase;
+            int announced = Mathf.Max(0, _state.PendingBaseDamage + _state.PendingAttackBonus);
+
+            var line = new StringBuilder();
+            line.Append(turn).Append("\u51fa\u724c\u9636\u6bb5\uff0c").Append(actor);
+
+            if (_state.PendingAttackSkillKind == SelectedSkillKind.GenericAttack)
+            {
+                string shape = GenericAttackShapes.DescribeShapeForLog(_state, cards);
+                line.Append("\u4f7f\u7528\u901a\u7528\u653b\u51fb\u6280\uff0c\u724c\u578b\u4e3a\u3010").Append(shape).Append("\u3011\uff0c\u5c06\u8981")
+                    .Append(announced).Append("\u70b9\u901a\u7528\u4f24\u5bb3");
+            }
+            else
+            {
+                string skillDisp = string.IsNullOrWhiteSpace(_state.PendingAttackSkillName) ? "\u653b\u51fb\u6280" : _state.PendingAttackSkillName;
+                line.Append("\u4f7f\u7528\u653b\u51fb\u6280\u3010").Append(skillDisp).Append("\u3011\u3002");
+                string ruleDesc = GetAttackSkillRuleDescriptionFromCard(_state);
+                if (!string.IsNullOrWhiteSpace(ruleDesc))
+                    line.Append(ruleDesc.Trim());
+                else
+                    line.Append("\u5c06\u8981\u9020\u6210").Append(announced).Append("\u70b9").Append(DamageTypeLabels.DamageTypeNameForAmountLine(_state.PendingDamageCategory == DamageCategory.None ? DamageCategory.Generic : _state.PendingDamageCategory, _state.PendingDamageElement));
+                if (_state.PendingIgnoreDefenseReduction)
+                    line.Append("\uff08\u65e0\u89c6\u9632\u5fa1\u51cf\u514d\uff09");
+            }
+
+            if (_state.PendingPostResolveDrawToAttacker > 0)
+                line.Append("\uff0c\u5e76\u6478").Append(_state.PendingPostResolveDrawToAttacker).Append("\u5f20\u724c");
+            if (_state.PendingPostResolveHealToAttacker > 0)
+                line.Append("\uff0c\u7ed3\u7b97\u540e\u56de\u590d").Append(_state.PendingPostResolveHealToAttacker).Append("\u70b9\u751f\u547d");
+
+            if (!string.IsNullOrWhiteSpace(_state.PendingCombatNote))
+                line.Append("\uff08").Append(_state.PendingCombatNote.Trim().Replace("\n", "\uff1b")).Append("\uff09");
+
+            line.Append("\u3002");
+            BattleFlowLog.Add(line.ToString());
+        }
+
+        private static string DescribeState()
+        {
+            if (_state == null)
+                return "state=null";
+
+            SideState activeSide = _state.ActiveSide;
+            return "turn=" + _state.TurnNumber +
+                   ", active=" + DescribeSide(_state.IsPlayerTurn) +
+                   ", phase=" + _state.CurrentPhase +
+                   ", step=" + _state.CurrentPhaseStep +
+                   ", playPhase=" + (_state.CurrentPlayPhaseIndex + 1) + "/" + _state.TotalPlayPhasesThisTurn +
+                   ", hand=" + activeSide.Hand.Count +
+                   ", played=" + activeSide.PlayedThisPhase.Count +
+                   ", morale=" + activeSide.Morale +
+                   ", hp=" + activeSide.CurrentHp + "/" + activeSide.MaxHp;
+        }
+
+        private static string DescribeSide(bool isPlayerSide)
+        {
+            return isPlayerSide ? "Player" : "Opponent";
         }
     }
 }

@@ -14,9 +14,9 @@ namespace JunzhenDuijue.Editor
         private const string PrefabFolder = "Assets/Resources/CardPrefabs";
         private const int CardCount = 150;
 
-        // 与图鉴左侧 70% 区域匹配：一行 4 张，参考分辨率下每张宽约 312，高 = 312 * 88/63
-        private static readonly float CardWidth = 312f;
-        private static readonly float CardHeight = 312f * 88f / 63f;
+        // 与当前图鉴 GridLayoutGroup 保持一致：单张卡牌固定 240×360
+        private static readonly float CardWidth = 240f;
+        private static readonly float CardHeight = 360f;
 
         [MenuItem("Tools/军阵对决/测试加载 Cards.xlsx")]
         public static void TestLoadCardsXlsx()
@@ -125,7 +125,7 @@ namespace JunzhenDuijue.Editor
 
             var root = new GameObject("CardSlot");
             var rootRect = root.AddComponent<RectTransform>();
-            rootRect.sizeDelta = new Vector2(200f, 200f * CardPixelH / CardPixelW);
+            rootRect.sizeDelta = new Vector2(CardWidth, CardHeight);
 
             var bg = root.AddComponent<Image>();
             bg.color = new Color(0.22f, 0.24f, 0.3f, 1f);

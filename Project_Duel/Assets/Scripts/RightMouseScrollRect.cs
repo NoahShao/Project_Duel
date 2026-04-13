@@ -1,44 +1,49 @@
 using UnityEngine;
-using UnityEngine.EventSystems;
-using UnityEngine.UI;
 
 namespace JunzhenDuijue
 {
     /// <summary>
-    /// 仅响应鼠标右键拖动的 ScrollRect，左键保留给选牌等操作。
+    /// 仅响应鼠标右键拖动的简易横向拖拽器，不再依赖 Unity ScrollRect 的自动回弹和布局修正。
     /// </summary>
-    public class RightMouseScrollRect : ScrollRect
+    public class RightMouseScrollRect : MonoBehaviour
     {
+        public RectTransform content;
+        public RectTransform viewport;
+        public bool horizontal = true;
+        public bool vertical;
+
         private Vector2 _rightPrev;
         private bool _rightDragging;
 
-        public override void OnBeginDrag(PointerEventData eventData)
+        public void ClampToBounds(bool alignToStart = false)
         {
-            if (eventData.button != PointerEventData.InputButton.Right)
+            if (content == null || viewport == null)
                 return;
-            _rightDragging = true;
-            _rightPrev = eventData.position;
-        }
 
-        public override void OnDrag(PointerEventData eventData)
-        {
-            if (eventData.button != PointerEventData.InputButton.Right)
-                return;
-            base.OnDrag(eventData);
-        }
+            Vector2 anchored = content.anchoredPosition;
+            if (horizontal)
+            {
+                float minX = Mathf.Min(0f, viewport.rect.width - content.rect.width);
+                anchored.x = alignToStart ? 0f : Mathf.Clamp(anchored.x, minX, 0f);
+            }
 
-        public override void OnEndDrag(PointerEventData eventData)
-        {
-            if (eventData.button != PointerEventData.InputButton.Right)
-                return;
-            _rightDragging = false;
-            base.OnEndDrag(eventData);
+            if (vertical)
+            {
+                float maxY = Mathf.Max(0f, content.rect.height - viewport.rect.height);
+                anchored.y = alignToStart ? 0f : Mathf.Clamp(anchored.y, 0f, maxY);
+            }
+
+            content.anchoredPosition = anchored;
         }
 
         private void Update()
         {
+            ClampToBounds();
+
             if (Input.GetMouseButtonDown(1))
             {
+                if (viewport != null && !RectTransformUtility.RectangleContainsScreenPoint(viewport, Input.mousePosition, null))
+                    return;
                 _rightDragging = true;
                 _rightPrev = Input.mousePosition;
             }
@@ -52,12 +57,14 @@ namespace JunzhenDuijue
             Vector2 delta = now - _rightPrev;
             _rightPrev = now;
 
+            Vector2 anchored = content.anchoredPosition;
             if (horizontal)
-            {
-                Vector2 p = content.anchoredPosition;
-                p.x -= delta.x;
-                content.anchoredPosition = p;
-            }
+                anchored.x -= delta.x;
+            if (vertical)
+                anchored.y -= delta.y;
+
+            content.anchoredPosition = anchored;
+            ClampToBounds();
         }
     }
 }

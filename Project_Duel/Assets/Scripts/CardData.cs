@@ -7,6 +7,7 @@ namespace JunzhenDuijue
     /// 表格列：id、角色名称、势力、花色、点数、技能名称一、技能一tag、技能描述一、技能名称二、技能二tag、技能描述二、技能名称三、技能三tag、技能描述三、
     /// 角色tag、是否有特殊形态、特殊形态id 等。
     /// </summary>
+    [System.Serializable]
     public class CardData
     {
         public int Id;

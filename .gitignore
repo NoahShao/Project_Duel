@@ -9,3 +9,10 @@ Project_Duel/[Uu]ser[Ss]ettings/
 *.log
 .vs/
 .gradle/
+
+# Backend
+Backend/**/bin/
+Backend/**/obj/
+Backend/.vs/
+Backend/.idea/
+Backend/.vscode/

@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
@@ -13,11 +14,17 @@ namespace JunzhenDuijue
         private static GameObject _root;
         private static TextMeshProUGUI _text;
         private static Coroutine _hideRoutine;
+        private static float _savedTimeScale = 1f;
+        private static bool _gamePausedForToast;
+        private static Action _toastOnComplete;
 
-        public static void Show(string message, float duration = 2f)
+        public static void Show(string message, float duration = 2f, bool pauseGameWhileVisible = false, Action onComplete = null)
         {
             if (_root == null)
                 Create();
+
+            RestoreTimeScaleIfPausedByToast();
+
             _text.text = message ?? "";
             _root.SetActive(true);
             if (_hideRoutine != null)
@@ -25,17 +32,51 @@ namespace JunzhenDuijue
                 var go = _root.GetComponent<MonoBehaviour>();
                 if (go != null)
                     go.StopCoroutine(_hideRoutine);
+                _hideRoutine = null;
+                _toastOnComplete = null;
             }
+
+            _toastOnComplete = onComplete;
             var runner = _root.GetComponent<ToastRunner>();
             if (runner != null)
-                _hideRoutine = runner.StartCoroutine(HideAfter(duration));
+                _hideRoutine = runner.StartCoroutine(HideAfter(duration, pauseGameWhileVisible));
         }
 
-        private static IEnumerator HideAfter(float seconds)
+        private static void RestoreTimeScaleIfPausedByToast()
         {
-            yield return new WaitForSeconds(seconds);
-            _root.SetActive(false);
+            if (!_gamePausedForToast)
+                return;
+            Time.timeScale = _savedTimeScale;
+            _gamePausedForToast = false;
+        }
+
+        private static IEnumerator HideAfter(float seconds, bool pauseGameWhileVisible)
+        {
+            if (pauseGameWhileVisible)
+            {
+                _savedTimeScale = Time.timeScale;
+                Time.timeScale = 0f;
+                _gamePausedForToast = true;
+            }
+
+            if (pauseGameWhileVisible)
+                yield return new WaitForSecondsRealtime(seconds);
+            else
+                yield return new WaitForSeconds(seconds);
+
+            if (pauseGameWhileVisible && _gamePausedForToast)
+            {
+                Time.timeScale = _savedTimeScale;
+                _gamePausedForToast = false;
+            }
+
+            if (_root != null)
+                _root.SetActive(false);
             _hideRoutine = null;
+
+            Action cb = _toastOnComplete;
+            _toastOnComplete = null;
+            cb?.Invoke();
         }
 
         private static void Create()

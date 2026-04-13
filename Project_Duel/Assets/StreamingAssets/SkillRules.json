@@ -1,0 +1,690 @@
+{
+  "Entries": [
+    {
+      "SkillKey": "NO001_0",
+      "CardId": "NO001",
+      "SkillIndex": 0,
+      "SkillName": "仁德",
+      "Tags": [
+        "强制技",
+        "持续技"
+      ],
+      "TriggerHint": "TriggeredPassive",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "start_game_gain_morale_and_max",
+      "Value1": 1,
+      "Value2": 1,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO001_1",
+      "CardId": "NO001",
+      "SkillIndex": 1,
+      "SkillName": "仁者无敌",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "discard_end_draw_reveal_red_heal_black_damage",
+      "Value1": 1,
+      "Value2": 2,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO002_0",
+      "CardId": "NO002",
+      "SkillIndex": 0,
+      "SkillName": "策马斩将",
+      "Tags": [
+        "攻击技"
+      ],
+      "TriggerHint": "PlayPhaseAttack",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "manual_primary_effect",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": "draw"
+    },
+    {
+      "SkillKey": "NO003_0",
+      "CardId": "NO003",
+      "SkillIndex": 0,
+      "SkillName": "长吼",
+      "Tags": [
+        "强制技"
+      ],
+      "TriggerHint": "TriggeredPassive",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "attack_red_bonus_damage",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": "red"
+    },
+    {
+      "SkillKey": "NO003_1",
+      "CardId": "NO003",
+      "SkillIndex": 1,
+      "SkillName": "据水断桥",
+      "Tags": [
+        "破军技",
+        "持续技"
+      ],
+      "TriggerHint": "PrimaryPhase",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "primary_recover_discard_gain_extra_phase",
+      "Value1": 1,
+      "Value2": 4,
+      "StringValue1": "extra_phase_from_suits"
+    },
+    {
+      "SkillKey": "NO004_0",
+      "CardId": "NO004",
+      "SkillIndex": 0,
+      "SkillName": "察势",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "manual_primary_effect",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": "draw"
+    },
+    {
+      "SkillKey": "NO004_1",
+      "CardId": "NO004",
+      "SkillIndex": 1,
+      "SkillName": "雄才大略",
+      "Tags": [
+        "强制技"
+      ],
+      "TriggerHint": "TriggeredPassive",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "empty_hand_draw_two_once_per_turn",
+      "Value1": 2,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO005_0",
+      "CardId": "NO005",
+      "SkillIndex": 0,
+      "SkillName": "远矢连珠",
+      "Tags": [
+        "攻击技"
+      ],
+      "TriggerHint": "PlayPhaseAttack",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "manual_primary_effect",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": "draw"
+    },
+    {
+      "SkillKey": "NO005_1",
+      "CardId": "NO005",
+      "SkillIndex": 1,
+      "SkillName": "虎步关右",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "attack_discard_black_gain_extra_phase",
+      "Value1": 1,
+      "Value2": 1,
+      "StringValue1": "black_discard"
+    },
+    {
+      "SkillKey": "NO006_0",
+      "CardId": "NO006",
+      "SkillIndex": 0,
+      "SkillName": "据守",
+      "Tags": [
+        "抵御"
+      ],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "play_phase_start_pay_morale_gain_resist",
+      "Value1": 2,
+      "Value2": 1,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO006_1",
+      "CardId": "NO006",
+      "SkillIndex": 1,
+      "SkillName": "八门金锁",
+      "Tags": [
+        "防御技"
+      ],
+      "TriggerHint": "DefensePhase",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "defense_reveal_small8_reduce2_else_draw",
+      "Value1": 2,
+      "Value2": 8,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO007_0",
+      "CardId": "NO007",
+      "SkillIndex": 0,
+      "SkillName": "江东猛虎",
+      "Tags": [
+        "攻击技"
+      ],
+      "TriggerHint": "PlayPhaseAttack",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "attack_pair_restore_morale_end_phase",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO008_0",
+      "CardId": "NO008",
+      "SkillIndex": 0,
+      "SkillName": "转斗千里",
+      "Tags": [
+        "攻击技"
+      ],
+      "TriggerHint": "PlayPhaseAttack",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "attack_damage_by_straight_length",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": "straight_length"
+    },
+    {
+      "SkillKey": "NO008_1",
+      "CardId": "NO008",
+      "SkillIndex": 1,
+      "SkillName": "虎踞鹰扬",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "attack_pay_morale_bonus_damage",
+      "Value1": 1,
+      "Value2": 3,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO009_0",
+      "CardId": "NO009",
+      "SkillIndex": 0,
+      "SkillName": "制衡",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "primary_discard_any_draw_same",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": "discard_draw_same"
+    },
+    {
+      "SkillKey": "NO009_1",
+      "CardId": "NO009",
+      "SkillIndex": 1,
+      "SkillName": "长江天险",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "discard_start_discard_all_flip_enemy",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO010_0",
+      "CardId": "NO010",
+      "SkillIndex": 0,
+      "SkillName": "暴政",
+      "Tags": [
+        "强制技"
+      ],
+      "TriggerHint": "TriggeredPassive",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "income_end_all_players_discard_one",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO010_1",
+      "CardId": "NO010",
+      "SkillIndex": 1,
+      "SkillName": "飞扬跋扈",
+      "Tags": [
+        "攻击技"
+      ],
+      "TriggerHint": "PlayPhaseAttack",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "attack_damage2_force_discard2",
+      "Value1": 2,
+      "Value2": 2,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO010_2",
+      "CardId": "NO010",
+      "SkillIndex": 2,
+      "SkillName": "横征暴敛",
+      "Tags": [
+        "防御技"
+      ],
+      "TriggerHint": "DefensePhase",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "defense_heal1_reclaim1",
+      "Value1": 1,
+      "Value2": 1,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO011_0",
+      "CardId": "NO011",
+      "SkillIndex": 0,
+      "SkillName": "鸩毒",
+      "Tags": [
+        "中毒"
+      ],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "attribute_damage_grant_poison",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO011_1",
+      "CardId": "NO011",
+      "SkillIndex": 1,
+      "SkillName": "绝计",
+      "Tags": [
+        "强制技",
+        "中毒"
+      ],
+      "TriggerHint": "TriggeredPassive",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "fire_damage_triggers_poison",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO011_2",
+      "CardId": "NO011",
+      "SkillIndex": 2,
+      "SkillName": "焚城",
+      "Tags": [
+        "攻击技"
+      ],
+      "TriggerHint": "PlayPhaseAttack",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "attack_fire_damage_scaling",
+      "Value1": 1,
+      "Value2": 2,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO012_0",
+      "CardId": "NO012",
+      "SkillIndex": 0,
+      "SkillName": "应策",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "damaged_or_discard_reveal_black_gain",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": "reveal_black_gain"
+    },
+    {
+      "SkillKey": "NO012_1",
+      "CardId": "NO012",
+      "SkillIndex": 1,
+      "SkillName": "文和乱武",
+      "Tags": [
+        "破军技"
+      ],
+      "TriggerHint": "PrimaryPhase",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "primary_draw_to_eight_gain_extra_phases",
+      "Value1": 8,
+      "Value2": 1,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO013_0",
+      "CardId": "NO013",
+      "SkillIndex": 0,
+      "SkillName": "天下无双",
+      "Tags": [
+        "攻击技"
+      ],
+      "TriggerHint": "PlayPhaseAttack",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "attack_fixed_damage_by_combo",
+      "Value1": 1,
+      "Value2": 8,
+      "StringValue1": "combo_rank"
+    },
+    {
+      "SkillKey": "NO014_0",
+      "CardId": "NO014",
+      "SkillIndex": 0,
+      "SkillName": "搦战扬威",
+      "Tags": [
+        "拼点",
+        "翻面",
+        "持续技",
+        "强制技"
+      ],
+      "TriggerHint": "TriggeredPassive",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "primary_pindian_flip_and_damage",
+      "Value1": 1,
+      "Value2": 1,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO015_0",
+      "CardId": "NO015",
+      "SkillIndex": 0,
+      "SkillName": "双雄",
+      "Tags": [
+        "强制技",
+        "转换"
+      ],
+      "TriggerHint": "TriggeredPassive",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "damage_or_damaged_switch_form_draw",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO015_1",
+      "CardId": "NO015",
+      "SkillIndex": 1,
+      "SkillName": "骁勇疾锋",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "damage_discard_bonus2",
+      "Value1": 2,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO015_2",
+      "CardId": "NO015",
+      "SkillIndex": 2,
+      "SkillName": "威震善战",
+      "Tags": [
+        "防御技"
+      ],
+      "TriggerHint": "DefensePhase",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "defense_reduce_common_or_element_2",
+      "Value1": 2,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO016_0",
+      "CardId": "NO016",
+      "SkillIndex": 0,
+      "SkillName": "翩婉",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "first_play_face_jqk_as_wild",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO016_1",
+      "CardId": "NO016",
+      "SkillIndex": 1,
+      "SkillName": "离间",
+      "Tags": [
+        "攻击技"
+      ],
+      "TriggerHint": "PlayPhaseAttack",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "attack_damage_by_two_generals_point_gap",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO017_0",
+      "CardId": "NO017",
+      "SkillIndex": 0,
+      "SkillName": "国色",
+      "Tags": [
+        "强制技"
+      ],
+      "TriggerHint": "TriggeredPassive",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "income_end_reveal_black_plus_damage_red_heal",
+      "Value1": 1,
+      "Value2": 2,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO017_1",
+      "CardId": "NO017",
+      "SkillIndex": 1,
+      "SkillName": "悼惜",
+      "Tags": [
+        "强制技"
+      ],
+      "TriggerHint": "TriggeredPassive",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "heart_small6_as_diamond",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO018_0",
+      "CardId": "NO018",
+      "SkillIndex": 0,
+      "SkillName": "天香",
+      "Tags": [
+        "强制技"
+      ],
+      "TriggerHint": "TriggeredPassive",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "discard_end_red_play_count_rewards",
+      "Value1": 1,
+      "Value2": 4,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO018_1",
+      "CardId": "NO018",
+      "SkillIndex": 1,
+      "SkillName": "念恩",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "prepare_remove_effect_heal2",
+      "Value1": 2,
+      "Value2": 1,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO019_0",
+      "CardId": "NO019",
+      "SkillIndex": 0,
+      "SkillName": "黄天当立",
+      "Tags": [
+        "攻击技"
+      ],
+      "TriggerHint": "PlayPhaseAttack",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "attack_lightning_damage_and_draw",
+      "Value1": 2,
+      "Value2": 3,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO019_1",
+      "CardId": "NO019",
+      "SkillIndex": 1,
+      "SkillName": "太平要术",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "lightning_damage_gain_healing",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO020_0",
+      "CardId": "NO020",
+      "SkillIndex": 0,
+      "SkillName": "影兵",
+      "Tags": [
+        "破军技"
+      ],
+      "TriggerHint": "PrimaryPhase",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "primary_raise_morale_cap_and_small3_no_flip",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO020_1",
+      "CardId": "NO020",
+      "SkillIndex": 1,
+      "SkillName": "妖风大作",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "primary_pay_morale_cap_gain_yofeng",
+      "Value1": 1,
+      "Value2": 1,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO021_0",
+      "CardId": "NO021",
+      "SkillIndex": 0,
+      "SkillName": "妖术",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "heal_then_deal1",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO021_1",
+      "CardId": "NO021",
+      "SkillIndex": 1,
+      "SkillName": "集军",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "primary_store_cards_then_lightning_burst",
+      "Value1": 36,
+      "Value2": 8,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO022_0",
+      "CardId": "NO022",
+      "SkillIndex": 0,
+      "SkillName": "平乱定叛",
+      "Tags": [
+        "攻击技"
+      ],
+      "TriggerHint": "PlayPhaseAttack",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "attack_damage_and_gain_healing",
+      "Value1": 2,
+      "Value2": 2,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO023_0",
+      "CardId": "NO023",
+      "SkillIndex": 0,
+      "SkillName": "强破",
+      "Tags": [],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "effect_gain_choose_heal_or_damage",
+      "Value1": 1,
+      "Value2": 1,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO024_0",
+      "CardId": "NO024",
+      "SkillIndex": 0,
+      "SkillName": "经天纬地",
+      "Tags": [
+        "防御技"
+      ],
+      "TriggerHint": "DefensePhase",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "defense_reveal_black_resist_red_healing",
+      "Value1": 1,
+      "Value2": 2,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO024_1",
+      "CardId": "NO024",
+      "SkillIndex": 1,
+      "SkillName": "泰然",
+      "Tags": [
+        "破军技",
+        "持续技"
+      ],
+      "TriggerHint": "PrimaryPhase",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "anytime_remove_effect_layers",
+      "Value1": 1,
+      "Value2": 0,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO080_0",
+      "CardId": "NO080",
+      "SkillIndex": 0,
+      "SkillName": "韬光养晦",
+      "Tags": [
+        "防御技",
+        "主动技",
+        "韬光"
+      ],
+      "TriggerHint": "DefensePhase",
+      "AllowOnOpponentTurn": true,
+      "EffectId": "defense_gain_armor_and_shaoguang",
+      "Value1": 1,
+      "Value2": 1,
+      "StringValue1": ""
+    },
+    {
+      "SkillKey": "NO080_1",
+      "CardId": "NO080",
+      "SkillIndex": 1,
+      "SkillName": "冢虎",
+      "Tags": [
+        "觉醒技",
+        "韬光"
+      ],
+      "TriggerHint": "Manual",
+      "AllowOnOpponentTurn": false,
+      "EffectId": "primary_start_awaken_if_shaoguang7",
+      "Value1": 7,
+      "Value2": 0,
+      "StringValue1": "awaken"
+    }
+  ]
+}

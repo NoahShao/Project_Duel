@@ -82,39 +82,87 @@ namespace JunzhenDuijue
             _byId = new Dictionary<int, CardData>();
             _maxId = 0;
 
+            if (TryLoadCompiledConfig())
+                return true;
+
+            return TryLoadFromXlsx();
+        }
+
+        private static bool TryLoadCompiledConfig()
+        {
+            var textAsset = Resources.Load<TextAsset>(CompiledConfigNames.CardsResourcePath);
+            if (textAsset == null || textAsset.bytes == null || textAsset.bytes.Length == 0)
+                return false;
+
+            try
+            {
+                string json = System.Text.Encoding.UTF8.GetString(textAsset.bytes);
+                var table = JsonUtility.FromJson<CardTableBinary>(json);
+                if (table == null || table.Cards == null || table.Cards.Count == 0)
+                    return false;
+
+                ApplyLoadedCards(table.Cards, table.MaxId);
+                Debug.Log($"[CardTableLoader] Loaded compiled config: {_allCards.Count} cards, maxId={_maxId}");
+                return true;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("[CardTableLoader] Failed to load compiled config, fallback to xlsx. " + e.Message);
+                _allCards = new List<CardData>();
+                _byId = new Dictionary<int, CardData>();
+                _maxId = 0;
+                return false;
+            }
+        }
+
+        private static bool TryLoadFromXlsx()
+        {
             string path = Path.Combine(Application.streamingAssetsPath, XlsxFileName);
             if (!File.Exists(path))
             {
-                Debug.LogWarning("未找到 Cards.xlsx，请将表格放到 StreamingAssets/Cards.xlsx。当前尝试路径: " + path);
+                Debug.LogWarning("[CardTableLoader] Cards.xlsx not found: " + path);
                 return false;
             }
+
             byte[] bytes = File.ReadAllBytes(path);
             if (bytes == null || bytes.Length == 0)
             {
-                Debug.LogWarning("Cards.xlsx 文件为空");
+                Debug.LogWarning("[CardTableLoader] Cards.xlsx is empty.");
                 return false;
             }
 
             if (!ValidateTableLayout(bytes, out string validateError))
             {
-                Debug.LogWarning("Cards.xlsx 表结构不符合要求：" + validateError);
+                Debug.LogWarning("[CardTableLoader] Cards.xlsx layout invalid: " + validateError);
                 return false;
             }
 
             if (!XlsxParser.Parse(bytes, _allCards))
             {
-                Debug.LogWarning("解析 Cards.xlsx 失败，请检查表头是否包含 id 列及第一行是否为表头");
+                Debug.LogWarning("[CardTableLoader] Failed to parse Cards.xlsx.");
                 return false;
             }
 
-            foreach (var c in _allCards)
-            {
-                if (c.Id > _maxId) _maxId = c.Id;
-                _byId[c.Id] = c;
-            }
-
-            Debug.Log($"Cards.xlsx 加载成功: {_allCards.Count} 条卡牌，最大 id={_maxId}");
+            ApplyLoadedCards(_allCards, 0);
+            Debug.Log($"[CardTableLoader] Loaded xlsx config: {_allCards.Count} cards, maxId={_maxId}");
             return true;
+        }
+
+        private static void ApplyLoadedCards(List<CardData> cards, int maxIdFromConfig)
+        {
+            _allCards = cards ?? new List<CardData>();
+            _byId = new Dictionary<int, CardData>();
+            _maxId = Mathf.Max(0, maxIdFromConfig);
+
+            for (int i = 0; i < _allCards.Count; i++)
+            {
+                var card = _allCards[i];
+                if (card == null)
+                    continue;
+                if (card.Id > _maxId)
+                    _maxId = card.Id;
+                _byId[card.Id] = card;
+            }
         }
 
         /// <summary> 获取图鉴要展示的卡牌 id 列表（1 到 MaxId，NO001 格式） </summary>
@@ -161,7 +209,7 @@ namespace JunzhenDuijue
     /// <summary>
     /// 纯 C# 解析 .xlsx（ZIP + XML），无外部 DLL。
     /// </summary>
-    internal static class XlsxParser
+    public static class XlsxParser
     {
         private const string NsSpreadsheet = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 

@@ -102,8 +102,11 @@ namespace JunzhenDuijue
         private const int CardsPerPage = 8;
         private const int Columns = 4;
         private const int Rows = 2;
-        private const float GridPadding = 16f;
-        private const float GridSpacing = 12f;
+        private const float GridPaddingHorizontal = 20f;
+        private const float GridPaddingTop = 48f;
+        private const float GridPaddingBottom = 20f;
+        private const float GridSpacing = 16f;
+        private const float GridCellSafetyScale = 0.68f;
         public static void Create()
         {
             _cardIds = CardTableLoader.GetCompendiumCardIds();
@@ -158,9 +161,10 @@ namespace JunzhenDuijue
             var leftRect = _leftArea.AddComponent<RectTransform>();
             leftRect.anchorMin = new Vector2(0f, 0f);
             leftRect.anchorMax = new Vector2(0.7f, 1f);
-            leftRect.offsetMin = new Vector2(20, 20);
-            leftRect.offsetMax = new Vector2(-10, -80);
+            leftRect.offsetMin = new Vector2(24, 24);
+            leftRect.offsetMax = new Vector2(-14, -88);
             _leftArea.AddComponent<Image>().color = new Color(0.18f, 0.2f, 0.26f, 1f);
+            _leftArea.AddComponent<RectMask2D>();
             _leftArea.AddComponent<DropZone>().IsCompendiumZone = true;
 
             var compTitle = CreateText(_leftArea.transform, "卡牌图鉴", 28);
@@ -168,39 +172,48 @@ namespace JunzhenDuijue
             compTitleRect.anchorMin = new Vector2(0.5f, 1f);
             compTitleRect.anchorMax = new Vector2(0.5f, 1f);
             compTitleRect.pivot = new Vector2(0.5f, 1f);
-            compTitleRect.anchoredPosition = new Vector2(0, -12);
-            compTitleRect.sizeDelta = new Vector2(400, 40);
+            compTitleRect.anchoredPosition = new Vector2(0, -16);
+            compTitleRect.sizeDelta = new Vector2(360, 36);
 
             var paginationRoot = new GameObject("Pagination");
             paginationRoot.transform.SetParent(_leftArea.transform, false);
             var paginationRect = paginationRoot.AddComponent<RectTransform>();
             paginationRect.anchorMin = new Vector2(0f, 0f);
             paginationRect.anchorMax = new Vector2(1f, 1f);
-            paginationRect.offsetMin = new Vector2(16, 60);
-            paginationRect.offsetMax = new Vector2(-16, -56);
+            paginationRect.offsetMin = new Vector2(24, 72);
+            paginationRect.offsetMax = new Vector2(-24, -64);
 
-            float btnW = 100f;
-            float btnH = 44f;
-            float bottomY = 22f;
+            float btnW = 92f;
+            float btnH = 40f;
+            float bottomY = 20f;
             var prevBtn = CreateSmallButton(paginationRoot.transform, "上一页", new Vector2(0f, 0f), new Vector2(20 + btnW * 0.5f, bottomY), btnW, btnH);
             prevBtn.onClick.AddListener(PrevPage);
             var nextBtn = CreateSmallButton(paginationRoot.transform, "下一页", new Vector2(1f, 0f), new Vector2(-20 - btnW * 0.5f, bottomY), btnW, btnH);
             nextBtn.onClick.AddListener(NextPage);
 
+            var gridViewport = new GameObject("CardGridViewport");
+            gridViewport.transform.SetParent(paginationRoot.transform, false);
+            var gridViewportRect = gridViewport.AddComponent<RectTransform>();
+            gridViewportRect.anchorMin = new Vector2(0f, 0f);
+            gridViewportRect.anchorMax = new Vector2(1f, 1f);
+            gridViewportRect.offsetMin = new Vector2(0f, 60f);
+            gridViewportRect.offsetMax = new Vector2(0f, -8f);
+            gridViewport.AddComponent<RectMask2D>();
+
             _cardGridRoot = new GameObject("CardGrid");
-            _cardGridRoot.transform.SetParent(paginationRoot.transform, false);
+            _cardGridRoot.transform.SetParent(gridViewport.transform, false);
             var gridRect = _cardGridRoot.AddComponent<RectTransform>();
             gridRect.anchorMin = new Vector2(0f, 0f);
             gridRect.anchorMax = new Vector2(1f, 1f);
-            gridRect.offsetMin = new Vector2(0, 50);
-            gridRect.offsetMax = new Vector2(0, -4);
+            gridRect.offsetMin = Vector2.zero;
+            gridRect.offsetMax = Vector2.zero;
 
             _cardGrid = _cardGridRoot.AddComponent<GridLayoutGroup>();
             _cardGrid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             _cardGrid.constraintCount = Columns;
             _cardGrid.spacing = new Vector2(GridSpacing, GridSpacing);
-            _cardGrid.padding = new RectOffset((int)GridPadding, (int)GridPadding, (int)GridPadding, (int)GridPadding);
-            _cardGrid.childAlignment = TextAnchor.UpperLeft;
+            _cardGrid.padding = new RectOffset((int)GridPaddingHorizontal, (int)GridPaddingHorizontal, (int)GridPaddingTop, (int)GridPaddingBottom);
+            _cardGrid.childAlignment = TextAnchor.MiddleCenter;
             _cardGrid.startCorner = GridLayoutGroup.Corner.UpperLeft;
             _cardGrid.startAxis = GridLayoutGroup.Axis.Horizontal;
             _cardGrid.cellSize = new Vector2(FallbackCellWidth, FallbackCellHeight);
@@ -211,39 +224,22 @@ namespace JunzhenDuijue
             pageLabelRect.anchorMin = new Vector2(0.5f, 0f);
             pageLabelRect.anchorMax = new Vector2(0.5f, 0f);
             pageLabelRect.pivot = new Vector2(0.5f, 0f);
-            pageLabelRect.anchoredPosition = new Vector2(0, 8);
-            pageLabelRect.sizeDelta = new Vector2(200, 28);
+            pageLabelRect.anchoredPosition = new Vector2(0, 6);
+            pageLabelRect.sizeDelta = new Vector2(180, 26);
         }
 
         /// <summary> 卡牌像素尺寸：宽 1016，高 1488（横向×纵向），比例 1016:1488 </summary>
         private const float CardPixelW = 1016f;
         private const float CardPixelH = 1488f;
-        private const float FallbackCellWidth = 200f;
-        private static float FallbackCellHeight => FallbackCellWidth * CardPixelH / CardPixelW;
+        private const float FixedGridCellWidth = 240f;
+        private const float FixedGridCellHeight = 360f;
+        private const float FallbackCellWidth = FixedGridCellWidth;
+        private const float FallbackCellHeight = FixedGridCellHeight;
 
         private static void UpdateGridCellSize()
         {
             if (_cardGrid == null || _cardGridRoot == null) return;
-            Canvas.ForceUpdateCanvases();
-            var parentRect = _cardGridRoot.transform.parent as RectTransform;
-            if (parentRect != null)
-                LayoutRebuilder.ForceRebuildLayoutImmediate(parentRect);
-            var gridRect = _cardGridRoot.GetComponent<RectTransform>();
-            float w = gridRect.rect.width;
-            float h = gridRect.rect.height;
-            if (w <= 0f || h <= 0f) return;
-            float areaW = w - GridPadding * 2 - GridSpacing * (Columns - 1);
-            float areaH = h - GridPadding * 2 - GridSpacing * (Rows - 1);
-            if (areaW <= 0f) areaW = FallbackCellWidth * Columns + GridSpacing * (Columns - 1);
-            if (areaH <= 0f) areaH = FallbackCellHeight * Rows + GridSpacing * (Rows - 1);
-            float cellWByWidth = areaW / Columns;
-            float cellHByWidth = cellWByWidth * CardPixelH / CardPixelW;
-            float cellHByHeight = areaH / Rows;
-            float cellWByHeight = cellHByHeight * CardPixelW / CardPixelH;
-            float cellW = Mathf.Min(cellWByWidth, cellWByHeight);
-            float cellH = cellW * CardPixelH / CardPixelW;
-            if (cellW <= 0f || cellH <= 0f) { cellW = FallbackCellWidth; cellH = FallbackCellHeight; }
-            _cardGrid.cellSize = new Vector2(cellW, cellH);
+            _cardGrid.cellSize = new Vector2(FixedGridCellWidth, FixedGridCellHeight);
         }
 
         private static void RefreshCardGrid()
@@ -265,22 +261,11 @@ namespace JunzhenDuijue
                 if (data == null) continue;
                 var cardGo = CreateCardSlot(data);
                 if (cardGo == null) continue;
-                var cardRect = cardGo.GetComponent<RectTransform>();
-                float cw = _cardGrid.cellSize.x;
-                float ch = _cardGrid.cellSize.y;
-                float cardW = Mathf.Min(cw, ch * CardPixelW / CardPixelH);
-                float cardH = cardW * CardPixelH / CardPixelW;
-                if (cardRect != null)
-                    cardRect.sizeDelta = new Vector2(cardW, cardH);
+                float cardW = FixedGridCellWidth;
+                float cardH = FixedGridCellHeight;
                 cardGo.transform.SetParent(_cardGridRoot.transform, false);
                 cardGo.name = cardId;
-                var faceTr = cardGo.transform.Find("Face");
-                if (faceTr != null)
-                {
-                    var faceRect = faceTr.GetComponent<RectTransform>();
-                    if (faceRect != null)
-                        faceRect.sizeDelta = new Vector2(cardW, cardH);
-                }
+                NormalizeCardSlotLayout(cardGo, cardW, cardH);
                 cardGo.SetActive(true);
                 var view = cardGo.GetComponent<CardView>();
                 if (view != null)
@@ -370,6 +355,48 @@ namespace JunzhenDuijue
             view.FaceImage = img;
             view.LoadFaceSprite();
             return root;
+        }
+
+        // Older single-card prefabs may use FaceImage instead of Face; force the face rect
+        // to fill the card root so it cannot overflow the GridLayout cell.
+        private static void NormalizeCardSlotLayout(GameObject cardGo, float cardW, float cardH)
+        {
+            if (cardGo == null) return;
+
+            var cardRect = cardGo.GetComponent<RectTransform>();
+            if (cardRect != null)
+            {
+                cardRect.localScale = Vector3.one;
+                cardRect.sizeDelta = new Vector2(cardW, cardH);
+            }
+
+            var faceRect = GetCardFaceRect(cardGo);
+            if (faceRect != null)
+            {
+                SetFullRect(faceRect);
+                faceRect.pivot = new Vector2(0.5f, 0.5f);
+                faceRect.anchoredPosition = Vector2.zero;
+                faceRect.localScale = Vector3.one;
+            }
+        }
+
+        private static RectTransform GetCardFaceRect(GameObject cardGo)
+        {
+            if (cardGo == null) return null;
+
+            var view = cardGo.GetComponent<CardView>();
+            if (view != null && view.FaceImage != null)
+                return view.FaceImage.rectTransform;
+
+            var display = cardGo.GetComponent<CardDisplay>();
+            if (display != null && display.FaceImage != null)
+                return display.FaceImage.rectTransform;
+
+            var faceTr = cardGo.transform.Find("Face");
+            if (faceTr == null)
+                faceTr = cardGo.transform.Find("FaceImage");
+
+            return faceTr != null ? faceTr.GetComponent<RectTransform>() : null;
         }
 
         private static void OpenCardDetail(CardView view)
@@ -1149,10 +1176,10 @@ namespace JunzhenDuijue
             // 输入名称行（高度单独缩小）
             var nameRow = new GameObject("NameRow");
             nameRow.transform.SetParent(content.transform, false);
+            nameRow.AddComponent<RectTransform>();
             var nameRowLE = nameRow.AddComponent<LayoutElement>();
             nameRowLE.preferredHeight = nameRowH;
             nameRowLE.flexibleWidth = 1;
-            var nameRowRect = nameRow.AddComponent<RectTransform>();
             var nameHlg = nameRow.AddComponent<HorizontalLayoutGroup>();
             nameHlg.spacing = 10f;
             nameHlg.childAlignment = TextAnchor.MiddleLeft;

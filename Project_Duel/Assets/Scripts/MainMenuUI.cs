@@ -68,13 +68,17 @@ namespace JunzhenDuijue
             var btn1 = CreateButton("开始游戏", startY, buttonWidth, buttonHeight);
             btn1.onClick.AddListener(OnStartGame);
 
+            // 联机对战
+            var btn2 = CreateButton("联机对战", startY - 0.12f, buttonWidth, buttonHeight);
+            btn2.onClick.AddListener(OnOpenOnlineGame);
+
             // 图鉴&组牌
-            var btn2 = CreateButton("图鉴&组牌", startY - 0.12f, buttonWidth, buttonHeight);
-            btn2.onClick.AddListener(OnOpenCompendium);
+            var btn3 = CreateButton("图鉴&组牌", startY - 0.24f, buttonWidth, buttonHeight);
+            btn3.onClick.AddListener(OnOpenCompendium);
 
             // 退出游戏
-            var btn3 = CreateButton("退出游戏", startY - 0.24f, buttonWidth, buttonHeight);
-            btn3.onClick.AddListener(OnExitGame);
+            var btn4 = CreateButton("退出游戏", startY - 0.36f, buttonWidth, buttonHeight);
+            btn4.onClick.AddListener(OnExitGame);
 
             // 右上角用户名
             var usernameGo = new GameObject("UsernameLabel");
@@ -132,6 +136,12 @@ namespace JunzhenDuijue
         {
             Hide();
             DeckSelectUI.Show();
+        }
+
+        private static void OnOpenOnlineGame()
+        {
+            Hide();
+            OnlineLobbyUI.Show();
         }
 
         private static void OnOpenCompendium()

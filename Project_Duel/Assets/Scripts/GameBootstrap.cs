@@ -13,17 +13,20 @@ namespace JunzhenDuijue
         {
             try
             {
+                RuntimeTraceLogger.MarkSessionStart("GameBootstrap.OnGameLoad");
                 EnsureEventSystem();
                 CardTableLoader.Load();
                 IntroLoader.Load();
                 MainMenuUI.Create();
                 CompendiumUI.Create();
                 DeckSelectUI.Create();
+                OnlineLobbyUI.Create();
                 MainMenuUI.Show();
                 CompendiumUI.Hide();
             }
             catch (System.Exception e)
             {
+                RuntimeTraceLogger.Exception("GameBootstrap.OnGameLoad", e);
                 Debug.LogException(e);
             }
         }
