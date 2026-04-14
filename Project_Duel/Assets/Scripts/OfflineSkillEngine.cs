@@ -96,7 +96,7 @@ namespace JunzhenDuijue
         }
 
         /// <summary>
-        /// 【仁德】消耗士气后：若场上翻面武将含刘备且规则为 start_game_gain_morale_and_max，则回复 1 点生命。
+        /// 【仁德】消耗士气后：若场上翻面武将含刘备且规则为 start_game_gain_morale_and_max，则恢复 1 点生命。
         /// </summary>
         public static void ApplyRenDeWhenMoraleSpent(BattleState state, bool sideIsPlayer)
         {
@@ -121,7 +121,7 @@ namespace JunzhenDuijue
         }
 
         /// <summary>
-        /// 【仁者无敌】弃牌阶段结束时：摸 Value1 张，展示最后一张；红色回复 Value2 生命，黑色对敌方造成 Value2 点通用伤害。
+        /// 【仁者无敌】弃牌阶段结束时：摸 Value1 张，展示最后一张；红色恢复 Value2 生命，黑色对敌方造成 Value2 点通用伤害。
         /// </summary>
         public static bool TryApplyDiscardEndRenZheWuDi(BattleState state, bool sideIsPlayer, out string message)
         {
@@ -154,8 +154,8 @@ namespace JunzhenDuijue
             if (IsRed(shown))
             {
                 side.CurrentHp = Mathf.Min(side.MaxHp, side.CurrentHp + amount);
-                message = "\u3010\u4ec1\u8005\u65e0\u654c\u3011\u5c55\u793a" + shown.DisplayName + "\uff08\u7ea2\u8272\uff09\uff0c\u56de\u590d" + amount + "\u70b9\u751f\u547d";
-                outcome = "\u5c55\u793a" + shown.DisplayName + "\uff08\u7ea2\u8272\uff09\uff0c\u56de\u590d" + amount + "\u70b9\u751f\u547d";
+                message = "\u3010\u4ec1\u8005\u65e0\u654c\u3011\u5c55\u793a" + shown.DisplayName + "\uff08\u7ea2\u8272\uff09\uff0c\u6062\u590d" + amount + "\u70b9\u751f\u547d";
+                outcome = "\u5c55\u793a" + shown.DisplayName + "\uff08\u7ea2\u8272\uff09\uff0c\u6062\u590d" + amount + "\u70b9\u751f\u547d";
             }
             else
             {
@@ -317,6 +317,9 @@ namespace JunzhenDuijue
             if (!TryGetFaceUpRule(state, attackerIsPlayer, generalIndex, skillIndex, out string cardId, out _))
             {
                 GenericAttackShapes.ApplyGenericAttack(state, state.ActiveSide.PlayedThisPhase, attackerIsPlayer);
+                state.PendingAttackSkillKind = SelectedSkillKind.GenericAttack;
+                state.PendingAttackSkillName = "\u901a\u7528\u653b\u51fb";
+                TryShowAttackDeclareBanner(state, attackerIsPlayer);
                 return;
             }
 
@@ -418,6 +421,22 @@ namespace JunzhenDuijue
             };
         }
 
+        private static void AppendPendingAttackDeclareModifiers(System.Text.StringBuilder line, BattleState state)
+        {
+            if (state == null || line == null)
+                return;
+            if (state.PendingExtraPlayPhasesToGrant > 0)
+                line.Append("\uff1b\u989d\u5916\u51fa\u724c\u9636\u6bb5+").Append(state.PendingExtraPlayPhasesToGrant);
+            if (state.PendingPostResolveDrawToAttacker > 0)
+                line.Append("\uff1b\u7ed3\u7b97\u540e\u6478").Append(state.PendingPostResolveDrawToAttacker).Append("\u5f20");
+            if (state.PendingPostResolveHealToAttacker > 0)
+                line.Append("\uff1b\u7ed3\u7b97\u540e\u6062\u590d").Append(state.PendingPostResolveHealToAttacker).Append("\u70b9\u751f\u547d");
+            if (state.PendingPostResolveMoraleToAttacker > 0)
+                line.Append("\uff1b\u7ed3\u7b97\u540e\u58eb\u6c14+").Append(state.PendingPostResolveMoraleToAttacker);
+            if (state.PendingIgnoreDefenseReduction)
+                line.Append("\uff1b\u672c\u6b21\u4e0d\u53ef\u9632\u5fa1\u51cf\u4f24");
+        }
+
         private static void TryShowAttackDeclareBanner(BattleState state, bool attackerIsPlayer)
         {
             if (BattleAttackPreview.SuppressSkillBanners || state == null)
@@ -426,31 +445,34 @@ namespace JunzhenDuijue
                 return;
 
             int declared = Mathf.Max(0, state.PendingBaseDamage + state.PendingAttackBonus);
-            if (declared <= 0 && state.PendingPostResolveDrawToAttacker <= 0 && state.PendingExtraPlayPhasesToGrant <= 0 && !state.PendingIgnoreDefenseReduction)
-                return;
-
             var sb = new System.Text.StringBuilder();
             sb.Append("\u5df2\u7533\u660e\u653b\u51fb\uff0c\u7ed3\u7b97\u65f6\u5c06\u9020\u6210").Append(declared).Append("\u70b9\u4f24\u5bb3");
-            if (state.PendingExtraPlayPhasesToGrant > 0)
-                sb.Append("\uff1b\u989d\u5916\u51fa\u724c\u9636\u6bb5+").Append(state.PendingExtraPlayPhasesToGrant);
-            if (state.PendingPostResolveDrawToAttacker > 0)
-                sb.Append("\uff1b\u7ed3\u7b97\u540e\u6478").Append(state.PendingPostResolveDrawToAttacker).Append("\u5f20");
-            if (state.PendingPostResolveHealToAttacker > 0)
-                sb.Append("\uff1b\u7ed3\u7b97\u540e\u56de\u590d").Append(state.PendingPostResolveHealToAttacker).Append("\u70b9\u751f\u547d");
-            if (state.PendingPostResolveMoraleToAttacker > 0)
-                sb.Append("\uff1b\u7ed3\u7b97\u540e\u58eb\u6c14+").Append(state.PendingPostResolveMoraleToAttacker);
-            if (state.PendingIgnoreDefenseReduction)
-                sb.Append("\uff1b\u672c\u6b21\u4e0d\u53ef\u9632\u5fa1\u51cf\u4f24");
+            AppendPendingAttackDeclareModifiers(sb, state);
 
             string outcome = sb.ToString();
+            bool isGeneric = state.PendingAttackSkillKind == SelectedSkillKind.GenericAttack;
+            if (!isGeneric && declared <= 0 && state.PendingPostResolveDrawToAttacker <= 0 && state.PendingExtraPlayPhasesToGrant <= 0 && !state.PendingIgnoreDefenseReduction)
+                return;
+
             if (state.PendingAttackSkillKind == SelectedSkillKind.GeneralSkill && state.PendingAttackGeneralIndex >= 0)
             {
                 if (TryGetFaceUpRule(state, attackerIsPlayer, state.PendingAttackGeneralIndex, state.PendingAttackSkillIndex, out string atkCardId, out SkillRuleEntry atkRule) && atkRule != null)
                     SkillEffectBanner.Show(attackerIsPlayer, true, SkillEffectBanner.GetRoleNameFromCardId(atkCardId), atkRule.SkillName, outcome);
             }
-            else if (state.PendingAttackSkillKind == SelectedSkillKind.GenericAttack)
+            else if (isGeneric)
             {
-                SkillEffectBanner.Show(attackerIsPlayer, true, "\u901a\u7528", "\u901a\u7528\u653b\u51fb", outcome);
+                if (!attackerIsPlayer)
+                {
+                    string shape = GenericAttackShapes.DescribeShapeForLog(state, state.ActiveSide.PlayedThisPhase);
+                    DamageCategory dc = state.PendingDamageCategory == DamageCategory.None ? DamageCategory.Generic : state.PendingDamageCategory;
+                    string dmgName = DamageTypeLabels.DamageTypeNameForAmountLine(dc, state.PendingDamageElement);
+                    var oppBanner = new System.Text.StringBuilder();
+                    oppBanner.Append("\u654c\u65b9\u73a9\u5bb6\u4f7f\u7528\u3010\u901a\u7528\u653b\u51fb\u6280\u3011\uff0c\u724c\u578b\u4e3a\u3010").Append(shape).Append("\u3011\uff0c\u5c06\u8981\u9020\u6210").Append(declared).Append("\u70b9").Append(dmgName);
+                    AppendPendingAttackDeclareModifiers(oppBanner, state);
+                    SkillEffectBanner.ShowRawLine(oppBanner.ToString());
+                }
+                else
+                    SkillEffectBanner.Show(attackerIsPlayer, true, "\u901a\u7528", "\u901a\u7528\u653b\u51fb", outcome);
             }
         }
 

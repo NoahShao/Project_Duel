@@ -71,7 +71,7 @@ namespace JunzhenDuijue
             if (cards == null || cards.Count == 0)
                 return result;
 
-            int n = Mathf.Min(cards.Count, BattleState.MaxPlayPerPhase);
+            int n = Mathf.Min(cards.Count, BattleState.MaxCardsEvaluatedForGenericAttack);
             // 键为牌型种类：对子与单牌等一样全局至多保留一条，结算时玩家只选其一。
             var byKind = new Dictionary<GenericAttackShapeKind, GenericAttackOption>();
 

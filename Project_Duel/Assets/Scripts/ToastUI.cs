@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -8,9 +9,18 @@ namespace JunzhenDuijue
 {
     /// <summary>
     /// 简单 Toast 提示，居中显示一段时间后自动消失。
+    /// 多条请求排队展示，避免技能宣告横幅被同一帧内后续 Toast（如防御宣告）覆盖。
     /// </summary>
     public static class ToastUI
     {
+        private struct QueuedToast
+        {
+            public string Message;
+            public float Duration;
+            public bool PauseGameWhileVisible;
+            public Action OnComplete;
+        }
+
         private static GameObject _root;
         private static RectTransform _panelRect;
         private static TextMeshProUGUI _text;
@@ -18,31 +28,42 @@ namespace JunzhenDuijue
         private static float _savedTimeScale = 1f;
         private static bool _gamePausedForToast;
         private static Action _toastOnComplete;
+        private static readonly Queue<QueuedToast> s_queue = new Queue<QueuedToast>();
 
         public static void Show(string message, float duration = 2f, bool pauseGameWhileVisible = false, Action onComplete = null)
         {
             if (_root == null)
                 Create();
 
+            s_queue.Enqueue(new QueuedToast
+            {
+                Message = message ?? "",
+                Duration = duration,
+                PauseGameWhileVisible = pauseGameWhileVisible,
+                OnComplete = onComplete,
+            });
+            TryStartNextQueuedToast();
+        }
+
+        private static void TryStartNextQueuedToast()
+        {
+            if (_hideRoutine != null || _root == null)
+                return;
+            if (s_queue.Count == 0)
+                return;
+
+            QueuedToast item = s_queue.Dequeue();
             RestoreTimeScaleIfPausedByToast();
 
-            _text.text = message ?? "";
+            _text.text = item.Message;
             // 必须先激活层级再量字，否则首局首次横幅时 TMP 未参与 Canvas 布局，会错误换行且底框尺寸不对。
             _root.SetActive(true);
             ApplyPanelSizeToText();
-            if (_hideRoutine != null)
-            {
-                var go = _root.GetComponent<MonoBehaviour>();
-                if (go != null)
-                    go.StopCoroutine(_hideRoutine);
-                _hideRoutine = null;
-                _toastOnComplete = null;
-            }
 
-            _toastOnComplete = onComplete;
+            _toastOnComplete = item.OnComplete;
             var runner = _root.GetComponent<ToastRunner>();
             if (runner != null)
-                _hideRoutine = runner.StartCoroutine(HideAfter(duration, pauseGameWhileVisible));
+                _hideRoutine = runner.StartCoroutine(HideAfter(item.Duration, item.PauseGameWhileVisible));
         }
 
         private static void RestoreTimeScaleIfPausedByToast()
@@ -80,6 +101,7 @@ namespace JunzhenDuijue
             Action cb = _toastOnComplete;
             _toastOnComplete = null;
             cb?.Invoke();
+            TryStartNextQueuedToast();
         }
 
         private static void Create()

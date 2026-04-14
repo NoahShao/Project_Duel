@@ -80,7 +80,7 @@ namespace JunzhenDuijue
             state.PendingDamageElement = snap.PendingDamageElement;
         }
 
-        /// <summary>数值越大越好：优先总伤，其次额外阶段、摸牌、回复等。</summary>
+        /// <summary>数值越大越好：优先总伤，其次额外阶段、摸牌、恢复等。</summary>
         public static long ScoreAttackChoice(BattleState state, bool attackerIsPlayer, int generalIndex, int skillIndex, List<PokerCard> played)
         {
             if (state == null || played == null || played.Count == 0)

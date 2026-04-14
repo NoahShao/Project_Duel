@@ -8,6 +8,12 @@ namespace JunzhenDuijue
     {
         public string Suit;
         public int Rank;
+        /// <summary>为 true 表示本张并非牌库手牌，而是角色区「当牌打出」的代理；结算后不进入弃牌堆。</summary>
+        public bool PlayedAsGeneral;
+        /// <summary>仅在 <see cref="PlayedAsGeneral"/> 时有效：角色在 <see cref="SideState.GeneralCardIds"/> 中的下标。</summary>
+        public int GeneralSlotIndex;
+        /// <summary>打出区展示用角色名（可选）。</summary>
+        public string PlayedRoleDisplayName;
 
         public string DisplayName
         {
@@ -140,6 +146,17 @@ namespace JunzhenDuijue
             return true;
         }
 
+        /// <summary>士气等：将已翻面武将翻回正面，并清除自动翻回计时。</summary>
+        public bool UnflipGeneralFromMorale(int index)
+        {
+            if (index < 0 || index >= GeneralFaceUp.Count || GeneralFaceUp[index])
+                return false;
+
+            GeneralFaceUp[index] = true;
+            FaceDownRecoverAfterOwnTurnEnds[index] = 0;
+            return true;
+        }
+
         public void RecoverGeneralsAtOwnTurnEnd()
         {
             for (int i = 0; i < GeneralFaceUp.Count; i++)
@@ -159,8 +176,26 @@ namespace JunzhenDuijue
         public void MovePlayedCardsToDiscard()
         {
             for (int i = 0; i < PlayedThisPhase.Count; i++)
-                DiscardPile.Add(PlayedThisPhase[i]);
+            {
+                var c = PlayedThisPhase[i];
+                if (!c.PlayedAsGeneral)
+                    DiscardPile.Add(c);
+            }
+
             PlayedThisPhase.Clear();
+        }
+
+        /// <summary>打出区中来自手牌的张数（角色当牌打出不计入，不受 <see cref="BattleState.MaxPlayPerPhase"/> 与手牌张数混用上限）。</summary>
+        public int CountNonGeneralCardsInPlayedZone()
+        {
+            int n = 0;
+            for (int i = 0; i < PlayedThisPhase.Count; i++)
+            {
+                if (!PlayedThisPhase[i].PlayedAsGeneral)
+                    n++;
+            }
+
+            return n;
         }
     }
 
@@ -215,6 +250,8 @@ namespace JunzhenDuijue
         public const int DefaultMoraleCap = 2;
         public const int MaxMorale = 2;
         public const int MaxPlayPerPhase = 5;
+        /// <summary>通用攻击枚举子集时参与组合的上限（含角色代理牌）；避免张数过大时 2^n 爆炸。</summary>
+        public const int MaxCardsEvaluatedForGenericAttack = 12;
 
         public static readonly string[] Suits = { "红桃", "方片", "黑桃", "梅花" };
 
@@ -465,6 +502,38 @@ namespace JunzhenDuijue
             PlayPhaseStartPromptMask = 0;
             PlayPhaseStartInitialized = false;
             ClearPendingCombat();
+        }
+
+        /// <summary>整理手牌：红桃→方片→黑桃→梅花→其他，同花色点数升序（A 最小）。</summary>
+        public static int SuitOrganizeOrder(string suit)
+        {
+            string s = (suit ?? string.Empty).Trim();
+            if (s == "\u7ea2\u6843") return 0;
+            if (s == "\u65b9\u7247" || s == "\u65b9\u5757") return 1;
+            if (s == "\u9ed1\u6843") return 2;
+            if (s == "\u6885\u82b1") return 3;
+            return 4;
+        }
+
+        public static int CompareHandCardsOrganize(PokerCard a, PokerCard b)
+        {
+            int c = SuitOrganizeOrder(a.Suit).CompareTo(SuitOrganizeOrder(b.Suit));
+            if (c != 0) return c;
+            return a.Rank.CompareTo(b.Rank);
+        }
+
+        public static void SortHandOrganize(List<PokerCard> hand)
+        {
+            if (hand == null || hand.Count < 2)
+                return;
+            hand.Sort(CompareHandCardsOrganize);
+        }
+
+        public static bool HandCardIdentityEquals(PokerCard a, PokerCard b)
+        {
+            return a.Suit == b.Suit && a.Rank == b.Rank && a.PlayedAsGeneral == b.PlayedAsGeneral
+                && a.GeneralSlotIndex == b.GeneralSlotIndex
+                && string.Equals(a.PlayedRoleDisplayName ?? "", b.PlayedRoleDisplayName ?? "", StringComparison.Ordinal);
         }
     }
 }

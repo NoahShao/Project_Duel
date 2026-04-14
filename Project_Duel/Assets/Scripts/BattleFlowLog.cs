@@ -14,6 +14,8 @@ namespace JunzhenDuijue
         public struct Entry
         {
             public string Line;
+            /// <summary>为 true 时在本行前增加额外上边距（用于区分回合）。</summary>
+            public bool ExtraTopMargin;
         }
 
         private static readonly List<Entry> _entries = new List<Entry>(64);
@@ -33,7 +35,21 @@ namespace JunzhenDuijue
             if (string.IsNullOrWhiteSpace(line))
                 return;
 
-            _entries.Add(new Entry { Line = line.Trim() });
+            _entries.Add(new Entry { Line = line.Trim(), ExtraTopMargin = false });
+            while (_entries.Count > MaxEntries)
+                _entries.RemoveAt(0);
+
+            Changed?.Invoke();
+        }
+
+        /// <summary>新回合开始时的标记行，与上一回合内容拉开间距。</summary>
+        public static void AddRoundBeginMarker(int roundNumber)
+        {
+            if (roundNumber < 1)
+                return;
+
+            _entries.Add(new Entry { Line = string.Empty, ExtraTopMargin = true });
+            _entries.Add(new Entry { Line = "\u3010\u56de\u5408" + roundNumber + "\u3011", ExtraTopMargin = false });
             while (_entries.Count > MaxEntries)
                 _entries.RemoveAt(0);
 

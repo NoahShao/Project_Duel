@@ -334,6 +334,7 @@ namespace JunzhenDuijue
                     if (_state.CurrentPhaseStep == PhaseStep.Start)
                     {
                         OnPreparationStart?.Invoke(attackerIsPlayer);
+                        BattleFlowLog.AddRoundBeginMarker(_state.TurnNumber);
                         BattleFlowPacing.AddLogThenContinue(
                             FlowTurnBracket(attackerIsPlayer) + "\u56de\u5408\u5f00\u59cb\uff0c\u51c6\u5907\u9636\u6bb5\uff0c\u65e0\u4e8b\u53d1\u751f\u3002",
                             () =>
@@ -387,7 +388,7 @@ namespace JunzhenDuijue
                     {
                         OnIncomeMain?.Invoke(attackerIsPlayer);
                         SideState side = _state.ActiveSide;
-                        int drawCnt = Mathf.Max(1, side.GetFaceUpGeneralCount());
+                        int drawCnt = side.GetFaceUpGeneralCount();
                         BattleState.Draw(side, drawCnt);
 
                         bool skipFirstMorale = _state.TurnNumber == 1 && _state.IsPlayerTurn == _state.PlayerGoesFirst;
@@ -395,8 +396,8 @@ namespace JunzhenDuijue
                             side.Morale = Mathf.Min(side.MoraleCap, side.Morale + 1);
 
                         string incomeLine = skipFirstMorale
-                            ? FlowTurnBracket(attackerIsPlayer) + "\u6536\u5165\u9636\u6bb5\uff0c\u6478" + drawCnt + "\u5f20\u724c\uff0c\u9996\u56de\u5408\u5148\u624b\u8df3\u8fc7\u58eb\u6c14\u56de\u590d\u3002"
-                            : FlowTurnBracket(attackerIsPlayer) + "\u6536\u5165\u9636\u6bb5\uff0c\u6478" + drawCnt + "\u5f20\u724c\uff0c\u58eb\u6c14+1\u3002";
+                            ? FlowTurnBracket(attackerIsPlayer) + "\u6536\u5165\u9636\u6bb5\uff0c\u6478" + drawCnt + "\u5f20\u724c\uff08\u672a\u7ffb\u9762\u89d2\u8272\u6570\uff09\uff0c\u9996\u56de\u5408\u5148\u624b\u8df3\u8fc7\u58eb\u6c14\u6062\u590d\u3002"
+                            : FlowTurnBracket(attackerIsPlayer) + "\u6536\u5165\u9636\u6bb5\uff0c\u6478" + drawCnt + "\u5f20\u724c\uff08\u672a\u7ffb\u9762\u89d2\u8272\u6570\uff09\uff0c\u58eb\u6c14+1\u3002";
 
                         BattleFlowPacing.AddLogThenContinue(incomeLine, () =>
                         {
@@ -710,11 +711,35 @@ namespace JunzhenDuijue
             if (_state.PendingPostResolveDrawToAttacker > 0)
                 logLine.Append("\uff0c\u653b\u51fb\u65b9\u6478").Append(_state.PendingPostResolveDrawToAttacker).Append("\u5f20\u724c");
             if (_state.PendingPostResolveHealToAttacker > 0)
-                logLine.Append("\uff0c\u653b\u51fb\u65b9\u56de\u590d").Append(_state.PendingPostResolveHealToAttacker).Append("\u70b9\u751f\u547d");
+                logLine.Append("\uff0c\u653b\u51fb\u65b9\u6062\u590d").Append(_state.PendingPostResolveHealToAttacker).Append("\u70b9\u751f\u547d");
             if (_state.PendingPostResolveMoraleToAttacker > 0)
                 logLine.Append("\uff0c\u653b\u51fb\u65b9\u58eb\u6c14+").Append(_state.PendingPostResolveMoraleToAttacker);
             logLine.Append("\u3002");
             BattleFlowLog.Add(logLine.ToString());
+
+            bool attackerIsPlayer = _state.IsPlayerTurn;
+            var activePlayed = _state.ActiveSide.PlayedThisPhase;
+            var flippedGenerals = new HashSet<int>();
+            for (int i = 0; i < activePlayed.Count; i++)
+            {
+                var c = activePlayed[i];
+                if (!c.PlayedAsGeneral)
+                    continue;
+                int g = c.GeneralSlotIndex;
+                if (g < 0 || flippedGenerals.Contains(g))
+                    continue;
+                flippedGenerals.Add(g);
+                if (_state.TryFlipGeneral(attackerIsPlayer, g))
+                {
+                    string roleName = !string.IsNullOrEmpty(c.PlayedRoleDisplayName)
+                        ? c.PlayedRoleDisplayName.Trim()
+                        : GameUI.GetGeneralDisplayNameForBattleLog(attackerIsPlayer, g);
+                    BattleFlowLog.Add(FlowTurnBracket(attackerIsPlayer) + "\u7ed3\u7b97\u540e\uff0c\u672c\u6b21\u5f53\u4f5c\u6253\u51fa\u7684\u89d2\u8272\u3010" + roleName + "\u3011\u5df2\u7ffb\u9762\u3002");
+                }
+            }
+
+            if (flippedGenerals.Count > 0)
+                GameUI.NotifyPhaseChanged();
         }
 
         private static void ClearOpponentAttackPlan()
@@ -1026,7 +1051,7 @@ namespace JunzhenDuijue
             if (_state.PendingPostResolveDrawToAttacker > 0)
                 line.Append("\uff0c\u5e76\u6478").Append(_state.PendingPostResolveDrawToAttacker).Append("\u5f20\u724c");
             if (_state.PendingPostResolveHealToAttacker > 0)
-                line.Append("\uff0c\u7ed3\u7b97\u540e\u56de\u590d").Append(_state.PendingPostResolveHealToAttacker).Append("\u70b9\u751f\u547d");
+                line.Append("\uff0c\u7ed3\u7b97\u540e\u6062\u590d").Append(_state.PendingPostResolveHealToAttacker).Append("\u70b9\u751f\u547d");
 
             if (!string.IsNullOrWhiteSpace(_state.PendingCombatNote))
                 line.Append("\uff08").Append(_state.PendingCombatNote.Trim().Replace("\n", "\uff1b")).Append("\uff09");

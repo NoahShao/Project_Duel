@@ -204,6 +204,58 @@ namespace JunzhenDuijue
             }
             return list;
         }
+
+        /// <summary>表格 D/E 列花色与点数，用于将角色当扑克牌打出。</summary>
+        public static bool TryGetGeneralAsPokerCard(string cardId, out PokerCard card)
+        {
+            card = default;
+            int id = CardIdToNumber(cardId);
+            if (id <= 0)
+                return false;
+            var data = GetCard(id);
+            if (data == null)
+                return false;
+            return TryGetGeneralAsPokerCard(data, out card);
+        }
+
+        public static bool TryGetGeneralAsPokerCard(CardData data, out PokerCard card)
+        {
+            card = default;
+            if (data == null)
+                return false;
+            string suit = string.IsNullOrWhiteSpace(data.Suit) ? string.Empty : data.Suit.Trim();
+            if (!TryParseRankToIntForPoker(data.Rank, out int rank))
+                return false;
+            card = new PokerCard { Suit = suit, Rank = rank };
+            return !string.IsNullOrEmpty(suit) && rank >= 1 && rank <= 13;
+        }
+
+        private static bool TryParseRankToIntForPoker(string rankRaw, out int rank)
+        {
+            rank = 0;
+            if (string.IsNullOrWhiteSpace(rankRaw))
+                return false;
+            string s = rankRaw.Trim();
+            if (s.Length == 0)
+                return false;
+            switch (char.ToUpperInvariant(s[0]))
+            {
+                case 'A':
+                    rank = 1;
+                    return s.Length == 1 || s.Equals("A", System.StringComparison.OrdinalIgnoreCase);
+                case 'J':
+                    rank = 11;
+                    return true;
+                case 'Q':
+                    rank = 12;
+                    return true;
+                case 'K':
+                    rank = 13;
+                    return true;
+                default:
+                    return int.TryParse(s, out rank) && rank >= 1 && rank <= 13;
+            }
+        }
     }
 
     /// <summary>

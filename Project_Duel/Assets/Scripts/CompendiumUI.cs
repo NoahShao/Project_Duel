@@ -530,6 +530,7 @@ namespace JunzhenDuijue
         public static void ShowCardDetailByCardId(string cardId)
         {
             if (string.IsNullOrEmpty(cardId) || _detailRoot == null) return;
+            GameUI.CollapsePlayerHandIfExpanded();
             int id = CardTableLoader.CardIdToNumber(cardId);
             var data = CardTableLoader.GetCard(id);
             if (data == null) return;
