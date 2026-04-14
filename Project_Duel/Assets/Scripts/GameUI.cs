@@ -46,6 +46,8 @@ namespace JunzhenDuijue
         private static Button _genericAttackButton;
         private static TextMeshProUGUI _genericAttackButtonText;
         private static TextMeshProUGUI _phaseLabel;
+        private static Button _battleSettingsButton;
+        private static GameObject _battleSettingsPopupRoot;
         private static TextMeshProUGUI _deckCountTooltip;
         private static GameObject _deckTooltipRoot;
         private static Button _discardButton;
@@ -181,6 +183,7 @@ namespace JunzhenDuijue
             _gameUiBackgroundTransform = bg.transform;
 
             BuildDivider();
+            BuildBattleSettingsUi();
             BuildTurnButton();
             BuildEndPassiveNodeButton();
             BuildGenericAttackButton();
@@ -215,6 +218,8 @@ namespace JunzhenDuijue
                 _endPassiveNodeButton.transform.SetAsLastSibling();
             if (_genericAttackButton != null)
                 _genericAttackButton.transform.SetAsLastSibling();
+            if (_battleSettingsButton != null)
+                _battleSettingsButton.transform.SetAsLastSibling();
         }
 
         private static void BuildVictoryDefeatPopups()
@@ -306,12 +311,14 @@ namespace JunzhenDuijue
 
         private static void ShowVictoryPopup()
         {
+            ToastUI.CancelAllToastsImmediate();
             CollapsePlayerHandIfExpanded();
             if (_victoryPopupRoot != null) _victoryPopupRoot.SetActive(true);
         }
 
         private static void ShowDefeatPopup()
         {
+            ToastUI.CancelAllToastsImmediate();
             CollapsePlayerHandIfExpanded();
             if (_defeatPopupRoot != null) _defeatPopupRoot.SetActive(true);
         }
@@ -402,6 +409,110 @@ namespace JunzhenDuijue
             labelRect.sizeDelta = new Vector2(620, 28);
             _phaseLabel = CreateGameText(labelGo.transform, "\u51c6\u5907\u9636\u6bb5", 22);
             SetFullRect(_phaseLabel.GetComponent<RectTransform>());
+        }
+
+        private static void BuildBattleSettingsUi()
+        {
+            var btnGo = new GameObject("BattleSettingsButton");
+            btnGo.transform.SetParent(_root.transform, false);
+            var btnRect = btnGo.AddComponent<RectTransform>();
+            btnRect.anchorMin = new Vector2(1f, 1f);
+            btnRect.anchorMax = new Vector2(1f, 1f);
+            btnRect.pivot = new Vector2(1f, 1f);
+            btnRect.anchoredPosition = new Vector2(-18f, -18f);
+            btnRect.sizeDelta = new Vector2(100f, 44f);
+            btnGo.AddComponent<Image>().color = new Color(0.26f, 0.3f, 0.38f, 1f);
+            var btnCanvas = btnGo.AddComponent<Canvas>();
+            btnCanvas.overrideSorting = true;
+            btnCanvas.sortingOrder = 99;
+            btnGo.AddComponent<GraphicRaycaster>();
+            _battleSettingsButton = btnGo.AddComponent<Button>();
+            var btnTxt = CreateGameText(btnGo.transform, "\u8bbe\u7f6e", 22);
+            SetFullRect(btnTxt.GetComponent<RectTransform>());
+            _battleSettingsButton.onClick.AddListener(OpenBattleSettingsPopup);
+
+            _battleSettingsPopupRoot = new GameObject("BattleSettingsPopup");
+            _battleSettingsPopupRoot.transform.SetParent(_root.transform, false);
+            _battleSettingsPopupRoot.SetActive(false);
+            SetFullRect(_battleSettingsPopupRoot.AddComponent<RectTransform>());
+            var setCanvas = _battleSettingsPopupRoot.AddComponent<Canvas>();
+            setCanvas.overrideSorting = true;
+            setCanvas.sortingOrder = 99;
+            _battleSettingsPopupRoot.AddComponent<GraphicRaycaster>();
+
+            var overlay = new GameObject("Overlay");
+            overlay.transform.SetParent(_battleSettingsPopupRoot.transform, false);
+            var overlayImg = overlay.AddComponent<Image>();
+            overlayImg.color = new Color(0, 0, 0, 0.55f);
+            overlayImg.raycastTarget = true;
+            SetFullRect(overlay.GetComponent<RectTransform>());
+            var overlayBtn = overlay.AddComponent<Button>();
+            overlayBtn.transition = Selectable.Transition.None;
+            overlayBtn.onClick.AddListener(CloseBattleSettingsPopup);
+
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(_battleSettingsPopupRoot.transform, false);
+            var panelRect = panel.AddComponent<RectTransform>();
+            panelRect.anchorMin = panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRect.sizeDelta = new Vector2(360f, 220f);
+            panel.AddComponent<Image>().color = new Color(0.16f, 0.18f, 0.24f, 0.98f);
+
+            var titleGo = new GameObject("Title");
+            titleGo.transform.SetParent(panel.transform, false);
+            var titleRect = titleGo.AddComponent<RectTransform>();
+            titleRect.anchorMin = new Vector2(0.5f, 1f);
+            titleRect.anchorMax = new Vector2(0.5f, 1f);
+            titleRect.pivot = new Vector2(0.5f, 1f);
+            titleRect.anchoredPosition = new Vector2(0f, -14f);
+            titleRect.sizeDelta = new Vector2(300f, 36f);
+            CreateGameText(titleGo.transform, "\u5bf9\u5c40\u8bbe\u7f6e", 26);
+
+            var surrenderGo = new GameObject("SurrenderButton");
+            surrenderGo.transform.SetParent(panel.transform, false);
+            var surRect = surrenderGo.AddComponent<RectTransform>();
+            surRect.anchorMin = surRect.anchorMax = new Vector2(0.5f, 0.5f);
+            surRect.anchoredPosition = new Vector2(0f, 8f);
+            surRect.sizeDelta = new Vector2(220f, 48f);
+            surrenderGo.AddComponent<Image>().color = new Color(0.55f, 0.22f, 0.22f, 1f);
+            var surBtn = surrenderGo.AddComponent<Button>();
+            surBtn.onClick.AddListener(OnSurrenderFromSettingsClicked);
+            CreateGameText(surrenderGo.transform, "\u6295\u964d", 24);
+
+            var closeGo = new GameObject("CloseButton");
+            closeGo.transform.SetParent(panel.transform, false);
+            var closeRect = closeGo.AddComponent<RectTransform>();
+            closeRect.anchorMin = closeRect.anchorMax = new Vector2(0.5f, 0f);
+            closeRect.pivot = new Vector2(0.5f, 0f);
+            closeRect.anchoredPosition = new Vector2(0f, 16f);
+            closeRect.sizeDelta = new Vector2(160f, 40f);
+            closeGo.AddComponent<Image>().color = new Color(0.22f, 0.26f, 0.34f, 1f);
+            var closeBtn = closeGo.AddComponent<Button>();
+            closeBtn.onClick.AddListener(CloseBattleSettingsPopup);
+            CreateGameText(closeGo.transform, "\u5173\u95ed", 22);
+        }
+
+        private static void OpenBattleSettingsPopup()
+        {
+            if (_battleSettingsPopupRoot == null || _state == null)
+                return;
+            CollapsePlayerHandIfExpanded();
+            _battleSettingsPopupRoot.transform.SetAsLastSibling();
+            _battleSettingsPopupRoot.SetActive(true);
+        }
+
+        private static void CloseBattleSettingsPopup()
+        {
+            if (_battleSettingsPopupRoot != null)
+                _battleSettingsPopupRoot.SetActive(false);
+        }
+
+        private static void OnSurrenderFromSettingsClicked()
+        {
+            CloseBattleSettingsPopup();
+            if (_state == null)
+                return;
+            _state.Player.CurrentHp = 0;
+            CheckImmediateGameOverAfterHpChange();
         }
 
         private static void BuildTurnButton()
@@ -795,7 +906,7 @@ namespace JunzhenDuijue
             padImg.color = Color.clear;
             padImg.raycastTarget = true;
             labelClickPad.AddComponent<PlayerHandExpandAreaClick>();
-            _playerHandLabel = CreateGameText(playerLabelGo.transform, "手牌上限：6/手牌数量：0", 18);
+            _playerHandLabel = CreateGameText(playerLabelGo.transform, "\u624b\u724c\u4e0a\u9650\uff1a" + BattleState.DefaultHandLimit + "/\u624b\u724c\u6570\u91cf\uff1a0", 18);
             SetFullRect(_playerHandLabel.GetComponent<RectTransform>());
             _playerHandLabel.raycastTarget = false;
 
@@ -867,7 +978,7 @@ namespace JunzhenDuijue
             olr.pivot = new Vector2(0.5f, 1f);
             olr.anchoredPosition = new Vector2(-margin - handW * 0.5f, -margin - handH - labelGap - labelH * 0.5f);
             olr.sizeDelta = new Vector2(handW - 16, labelH);
-            _opponentHandLabel = CreateGameText(oppLabelGo.transform, "手牌上限：6/手牌数量：0", 18);
+            _opponentHandLabel = CreateGameText(oppLabelGo.transform, "\u624b\u724c\u4e0a\u9650\uff1a" + BattleState.DefaultHandLimit + "/\u624b\u724c\u6570\u91cf\uff1a0", 18);
             SetFullRect(_opponentHandLabel.GetComponent<RectTransform>());
 
             var oppFrame = new GameObject("OpponentHandFrame");
@@ -2400,8 +2511,6 @@ namespace JunzhenDuijue
                 ToastUI.Show("\u8054\u673a\u5c40\u4e0d\u652f\u6301\u6574\u7406\u624b\u724c", 2.5f);
                 return;
             }
-            if (!_state.IsPlayerTurn)
-                return;
 
             bool discardPopupPlayer = _discardPhasePopupRoot != null && _discardPhasePopupRoot.activeSelf && _discardPhaseIsPlayer;
             List<PokerCard> savedPick = null;
@@ -2521,7 +2630,7 @@ namespace JunzhenDuijue
             panelR.anchorMax = new Vector2(0.5f, 0.5f);
             panelR.pivot = new Vector2(0.5f, 0.5f);
             panelR.anchoredPosition = Vector2.zero;
-            panelR.sizeDelta = new Vector2(1000, 480);
+            panelR.sizeDelta = new Vector2(1020f, Mathf.Min(620f, RefHeight * 0.72f));
             panel.AddComponent<Image>().color = new Color(0.18f, 0.2f, 0.26f, 0.98f);
             var titleGo = new GameObject("Title");
             titleGo.transform.SetParent(panel.transform, false);
@@ -2566,23 +2675,26 @@ namespace JunzhenDuijue
             var contentR = content.AddComponent<RectTransform>();
             contentR.anchorMin = new Vector2(0f, 1f);
             contentR.anchorMax = new Vector2(1f, 1f);
-            contentR.pivot = new Vector2(0f, 1f);
+            contentR.pivot = new Vector2(0.5f, 1f);
             contentR.anchoredPosition = Vector2.zero;
-            contentR.sizeDelta = new Vector2(0, 120);
-            var hlg = content.AddComponent<HorizontalLayoutGroup>();
-            hlg.spacing = 8;
-            hlg.padding = new RectOffset(8, 8, 8, 8);
-            hlg.childAlignment = TextAnchor.MiddleLeft;
-            hlg.childControlWidth = true;
-            hlg.childControlHeight = true;
-            hlg.childForceExpandWidth = false;
-            hlg.childForceExpandHeight = false;
-            content.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+            contentR.sizeDelta = new Vector2(0f, 200f);
+            float jushuiCellW = 80f;
+            float jushuiCellH = jushuiCellW * CardAspectH / CardAspectW;
+            var jushuiGrid = content.AddComponent<GridLayoutGroup>();
+            jushuiGrid.cellSize = new Vector2(jushuiCellW, jushuiCellH);
+            jushuiGrid.spacing = new Vector2(8f, 8f);
+            jushuiGrid.padding = new RectOffset(8, 8, 8, 8);
+            jushuiGrid.startCorner = GridLayoutGroup.Corner.UpperLeft;
+            jushuiGrid.startAxis = GridLayoutGroup.Axis.Horizontal;
+            jushuiGrid.childAlignment = TextAnchor.UpperCenter;
+            jushuiGrid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            jushuiGrid.constraintCount = 10;
             var sr = scrollGo.AddComponent<ScrollRect>();
             sr.content = contentR;
             sr.viewport = vpR;
-            sr.horizontal = true;
-            sr.vertical = false;
+            sr.horizontal = false;
+            sr.vertical = true;
+            sr.movementType = ScrollRect.MovementType.Clamped;
             _jushuiContent = content.transform;
             var btnRow = new GameObject("Buttons");
             btnRow.transform.SetParent(panel.transform, false);
@@ -2655,7 +2767,10 @@ namespace JunzhenDuijue
             foreach (Transform t in _jushuiContent)
                 UnityEngine.Object.Destroy(t.gameObject);
 
-            float cardW = 80f;
+            const int jushuiCols = 10;
+            const float cardW = 80f;
+            const float spacingY = 8f;
+            const float gridPad = 8f;
             float cardH = cardW * CardAspectH / CardAspectW;
             for (int i = 0; i < _jushuiSnapshot.Count; i++)
             {
@@ -2663,9 +2778,6 @@ namespace JunzhenDuijue
                 var pc = _jushuiSnapshot[i];
                 var item = new GameObject("DiscardItem");
                 item.transform.SetParent(_jushuiContent, false);
-                var le = item.AddComponent<LayoutElement>();
-                le.preferredWidth = cardW;
-                le.preferredHeight = cardH;
                 var img = item.AddComponent<Image>();
                 img.color = new Color(0.22f, 0.26f, 0.32f, 1f);
                 var btn = item.AddComponent<Button>();
@@ -2675,6 +2787,19 @@ namespace JunzhenDuijue
                 var label = CreateGameText(labelGo.transform, pc.DisplayName, 16);
                 SetFullRect(label.GetComponent<RectTransform>());
             }
+
+            int rows = _jushuiSnapshot.Count <= 0 ? 1 : Mathf.CeilToInt(_jushuiSnapshot.Count / (float)jushuiCols);
+            float contentH = gridPad * 2f + rows * cardH + Mathf.Max(0, rows - 1) * spacingY;
+            if (_jushuiContent is RectTransform jContentRt)
+                jContentRt.sizeDelta = new Vector2(0f, contentH);
+
+            Canvas.ForceUpdateCanvases();
+            if (_jushuiContent is RectTransform jCr)
+                LayoutRebuilder.ForceRebuildLayoutImmediate(jCr);
+            Transform jScrollTf = _jushuiContent != null ? _jushuiContent.parent?.parent : null;
+            var jScroll = jScrollTf != null ? jScrollTf.GetComponent<ScrollRect>() : null;
+            if (jScroll != null)
+                jScroll.verticalNormalizedPosition = 1f;
 
             _jushuiPopupRoot.transform.SetAsLastSibling();
             _jushuiPopupRoot.SetActive(true);
@@ -3337,7 +3462,7 @@ namespace JunzhenDuijue
             panelRect.anchorMax = new Vector2(0.5f, 0.5f);
             panelRect.pivot = new Vector2(0.5f, 0.5f);
             panelRect.anchoredPosition = Vector2.zero;
-            panelRect.sizeDelta = new Vector2(1000f, 280f);
+            panelRect.sizeDelta = new Vector2(1020f, Mathf.Min(640f, RefHeight * 0.72f));
             _discardPopupPanelRt = panelRect;
             panel.AddComponent<Image>().color = new Color(0.18f, 0.2f, 0.26f, 0.98f);
 
@@ -3353,11 +3478,11 @@ namespace JunzhenDuijue
 
             var scrollGo = new GameObject("Scroll");
             scrollGo.transform.SetParent(panel.transform, false);
-            var scrollRect = scrollGo.AddComponent<RectTransform>();
-            scrollRect.anchorMin = new Vector2(0f, 0f);
-            scrollRect.anchorMax = new Vector2(1f, 1f);
-            scrollRect.offsetMin = new Vector2(16, 16);
-            scrollRect.offsetMax = new Vector2(-16, -56);
+            var scrollRt = scrollGo.AddComponent<RectTransform>();
+            scrollRt.anchorMin = new Vector2(0f, 0f);
+            scrollRt.anchorMax = new Vector2(1f, 1f);
+            scrollRt.offsetMin = new Vector2(16, 16);
+            scrollRt.offsetMax = new Vector2(-16, -56);
             var viewport = new GameObject("Viewport");
             viewport.transform.SetParent(scrollGo.transform, false);
             var viewportRect = viewport.AddComponent<RectTransform>();
@@ -3372,23 +3497,26 @@ namespace JunzhenDuijue
             var contentRect = content.AddComponent<RectTransform>();
             contentRect.anchorMin = new Vector2(0f, 1f);
             contentRect.anchorMax = new Vector2(1f, 1f);
-            contentRect.pivot = new Vector2(0f, 1f);
+            contentRect.pivot = new Vector2(0.5f, 1f);
             contentRect.anchoredPosition = Vector2.zero;
-            contentRect.sizeDelta = new Vector2(0, 120);
-            var hlg = content.AddComponent<HorizontalLayoutGroup>();
-            hlg.spacing = 8;
-            hlg.padding = new RectOffset(8, 8, 8, 8);
-            hlg.childAlignment = TextAnchor.MiddleLeft;
-            hlg.childControlWidth = true;
-            hlg.childControlHeight = true;
-            hlg.childForceExpandWidth = false;
-            hlg.childForceExpandHeight = false;
-            content.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+            contentRect.sizeDelta = new Vector2(0f, 200f);
+            float discardCellW = 80f;
+            float discardCellH = discardCellW * CardAspectH / CardAspectW;
+            var grid = content.AddComponent<GridLayoutGroup>();
+            grid.cellSize = new Vector2(discardCellW, discardCellH);
+            grid.spacing = new Vector2(8f, 8f);
+            grid.padding = new RectOffset(8, 8, 8, 8);
+            grid.startCorner = GridLayoutGroup.Corner.UpperLeft;
+            grid.startAxis = GridLayoutGroup.Axis.Horizontal;
+            grid.childAlignment = TextAnchor.UpperCenter;
+            grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            grid.constraintCount = 10;
             var sr = scrollGo.AddComponent<ScrollRect>();
             sr.content = contentRect;
             sr.viewport = viewportRect;
-            sr.horizontal = true;
-            sr.vertical = false;
+            sr.horizontal = false;
+            sr.vertical = true;
+            sr.movementType = ScrollRect.MovementType.Clamped;
 
             _discardPopupContent = content.transform;
         }
@@ -3509,16 +3637,17 @@ namespace JunzhenDuijue
             }
             foreach (Transform t in _discardPopupContent)
                 UnityEngine.Object.Destroy(t.gameObject);
-            float cardW = 80f;
+
+            const int discardCols = 10;
+            const float cardW = 80f;
+            const float spacingY = 8f;
+            const float gridPad = 8f;
             float cardH = cardW * CardAspectH / CardAspectW;
             for (int i = 0; i < pile.Count; i++)
             {
                 var pc = pile[i];
                 var item = new GameObject("DiscardItem");
                 item.transform.SetParent(_discardPopupContent, false);
-                var le = item.AddComponent<LayoutElement>();
-                le.preferredWidth = cardW;
-                le.preferredHeight = cardH;
                 item.AddComponent<Image>().color = new Color(0.22f, 0.26f, 0.32f, 1f);
                 var labelGo = new GameObject("Label");
                 labelGo.transform.SetParent(item.transform, false);
@@ -3526,22 +3655,18 @@ namespace JunzhenDuijue
                 SetFullRect(label.GetComponent<RectTransform>());
             }
 
-            const float scrollTopInset = 56f;
-            const float scrollBottomInset = 16f;
-            const float hlgVerticalPad = 16f;
-            float rowContentH = cardH + hlgVerticalPad;
+            int rows = pile.Count <= 0 ? 1 : Mathf.CeilToInt(pile.Count / (float)discardCols);
+            float contentH = gridPad * 2f + rows * cardH + Mathf.Max(0, rows - 1) * spacingY;
             if (_discardPopupContent is RectTransform contentRt)
-                contentRt.sizeDelta = new Vector2(contentRt.sizeDelta.x, rowContentH);
-            if (_discardPopupPanelRt != null)
-            {
-                float panelH = scrollTopInset + rowContentH + scrollBottomInset;
-                panelH = Mathf.Clamp(panelH, 200f, RefHeight * 0.85f);
-                _discardPopupPanelRt.sizeDelta = new Vector2(_discardPopupPanelRt.sizeDelta.x, panelH);
-            }
+                contentRt.sizeDelta = new Vector2(0f, contentH);
 
             Canvas.ForceUpdateCanvases();
             if (_discardPopupContent is RectTransform cr)
                 LayoutRebuilder.ForceRebuildLayoutImmediate(cr);
+            Transform scrollTf = _discardPopupContent != null ? _discardPopupContent.parent?.parent : null;
+            var discardScroll = scrollTf != null ? scrollTf.GetComponent<ScrollRect>() : null;
+            if (discardScroll != null)
+                discardScroll.verticalNormalizedPosition = 1f;
         }
 
         private static void CloseDiscardPopup()
@@ -3573,7 +3698,7 @@ namespace JunzhenDuijue
             BattlePhaseManager.OnGameStart();
             if (_state != null && !_state.IsPlayerTurn && IsOpponentTurnAutoEndEnabled())
             {
-                while (_state != null && !_state.IsPlayerTurn && (_state.CurrentPhase == BattlePhase.Primary || _state.CurrentPhase == BattlePhase.Main))
+                while (_state != null && !_state.IsPlayerTurn && (_state.CurrentPhase == BattlePhase.Primary || _state.CurrentPhase == BattlePhase.Main) && !ToastUI.IsSkillBannerTimeFreezeActive())
                     BattlePhaseManager.EndTurn();
             }
             DeckSelectUI.Hide();

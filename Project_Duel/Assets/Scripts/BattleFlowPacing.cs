@@ -48,8 +48,17 @@ namespace JunzhenDuijue
             float d = GetPauseSecondsForLine(line);
             if (d <= 0f)
             {
-                continuation?.Invoke();
-                BattlePhaseManager.TryOpponentAutoAdvanceAfterBattleFlowPacing();
+                if (ToastUI.IsSkillBannerTimeFreezeActive())
+                {
+                    EnsureHost();
+                    s_runner.StartCoroutine(RunWhenSkillBannerUnfrozen(continuation));
+                }
+                else
+                {
+                    continuation?.Invoke();
+                    BattlePhaseManager.TryOpponentAutoAdvanceAfterBattleFlowPacing();
+                }
+
                 return;
             }
 
@@ -57,6 +66,14 @@ namespace JunzhenDuijue
             s_queue.Enqueue((d, continuation ?? (() => { })));
             if (s_processRoutine == null)
                 s_processRoutine = s_runner.StartCoroutine(ProcessQueue());
+        }
+
+        private static IEnumerator RunWhenSkillBannerUnfrozen(Action continuation)
+        {
+            while (ToastUI.IsSkillBannerTimeFreezeActive())
+                yield return null;
+            continuation?.Invoke();
+            BattlePhaseManager.TryOpponentAutoAdvanceAfterBattleFlowPacing();
         }
 
         private static IEnumerator ProcessQueue()
@@ -68,6 +85,8 @@ namespace JunzhenDuijue
                     (float delay, Action act) = s_queue.Dequeue();
                     if (delay > 0f)
                         yield return new WaitForSecondsRealtime(delay);
+                    while (ToastUI.IsSkillBannerTimeFreezeActive())
+                        yield return null;
                     act?.Invoke();
                     BattlePhaseManager.TryOpponentAutoAdvanceAfterBattleFlowPacing();
                 }

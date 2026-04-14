@@ -85,6 +85,8 @@ namespace JunzhenDuijue
         {
             if (_state == null)
                 return;
+            if (ToastUI.IsSkillBannerTimeFreezeActive())
+                return;
 
             Debug.Log("[BattlePhaseManager] >>> EndTurn() 被调用");
             Debug.Log("[BattlePhaseManager] 当前阶段: " + _state.CurrentPhase + " / " + _state.CurrentPhaseStep);
@@ -133,9 +135,17 @@ namespace JunzhenDuijue
         /// 战报停顿改为异步后，<see cref="RunPhaseStep"/> 可能在首帧提前返回，阶段尚未到主动/出牌；
         /// 在每次战报续跑结束时调用，以补执行原 <c>TurnEnd</c> 里针对对手的同步 <c>EndTurn</c> 循环。
         /// </summary>
+        /// <summary>技能横幅解冻后由 <see cref="ToastUI"/> 调用，补跑对手自动推进。</summary>
+        public static void NotifyToastBannerUnblocked()
+        {
+            TryOpponentAutoAdvanceAfterBattleFlowPacing();
+        }
+
         public static void TryOpponentAutoAdvanceAfterBattleFlowPacing()
         {
             if (_state == null)
+                return;
+            if (ToastUI.IsSkillBannerTimeFreezeActive())
                 return;
             if (_state.IsPlayerTurn)
                 return;

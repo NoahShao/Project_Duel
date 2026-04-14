@@ -246,7 +246,7 @@ namespace JunzhenDuijue
 
     public sealed class BattleState
     {
-        public const int DefaultHandLimit = 6;
+        public const int DefaultHandLimit = 7;
         public const int DefaultMoraleCap = 2;
         public const int MaxMorale = 2;
         public const int MaxPlayPerPhase = 5;

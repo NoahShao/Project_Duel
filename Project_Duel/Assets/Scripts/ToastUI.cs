@@ -30,6 +30,27 @@ namespace JunzhenDuijue
         private static Action _toastOnComplete;
         private static readonly Queue<QueuedToast> s_queue = new Queue<QueuedToast>();
 
+        /// <summary>技能横幅等 <c>pauseGameWhileVisible</c> 为 true 时，Time.timeScale 被置 0；用于暂停战报续跑与 AI 连点 EndTurn。</summary>
+        public static bool IsSkillBannerTimeFreezeActive() => _gamePausedForToast;
+
+        /// <summary>胜负已定时清空队列并关闭 Toast，不执行未完成的 onComplete。</summary>
+        public static void CancelAllToastsImmediate()
+        {
+            s_queue.Clear();
+            if (_root != null)
+            {
+                var runner = _root.GetComponent<ToastRunner>();
+                if (_hideRoutine != null && runner != null)
+                    runner.StopCoroutine(_hideRoutine);
+            }
+
+            _hideRoutine = null;
+            _toastOnComplete = null;
+            RestoreTimeScaleIfPausedByToast();
+            if (_root != null)
+                _root.SetActive(false);
+        }
+
         public static void Show(string message, float duration = 2f, bool pauseGameWhileVisible = false, Action onComplete = null)
         {
             if (_root == null)
@@ -102,6 +123,8 @@ namespace JunzhenDuijue
             _toastOnComplete = null;
             cb?.Invoke();
             TryStartNextQueuedToast();
+            if (!_gamePausedForToast)
+                BattlePhaseManager.NotifyToastBannerUnblocked();
         }
 
         private static void Create()
