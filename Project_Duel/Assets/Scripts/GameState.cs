@@ -285,6 +285,8 @@ namespace JunzhenDuijue
         public bool PendingIgnoreDefenseReduction;
         /// <summary>多牌型攻击技由玩家在二级弹窗选择；当前用于【策马斩将】0=两张红色单牌 1=红色顺子 2=红色同花顺；-1 表示未选或由 AI 自动择优。</summary>
         public int PendingAttackPatternVariant = -1;
+        /// <summary>【策马斩将】本次结算在横幅上展示的牌型分支（0/1/2），与 <see cref="PendingAttackPatternVariant"/> 在配置成功后对齐；-1 表示未使用。</summary>
+        public int PendingCeMaBannerShapeKind = -1;
         /// <summary>通用攻击：玩家在 <see cref="GenericAttackShapes.BuildSortedOptions"/> 列表中的选项下标；-1 表示未指定（多选项时由 AI 择优或等待玩家选择）。</summary>
         public int PendingGenericAttackOptionIndex = -1;
         public bool PendingGenericAttackShapeChoicePending;
@@ -337,6 +339,7 @@ namespace JunzhenDuijue
             PendingDefenseSkillKind = SelectedSkillKind.None;
             PendingIgnoreDefenseReduction = false;
             PendingAttackPatternVariant = -1;
+            PendingCeMaBannerShapeKind = -1;
             PendingGenericAttackOptionIndex = -1;
             PendingGenericAttackShapeChoicePending = false;
             PendingGenericAttackShapeDisplayName = string.Empty;
@@ -457,6 +460,29 @@ namespace JunzhenDuijue
                 side.Hand.RemoveAt(handIndex);
                 side.DiscardPile.Add(card);
             }
+        }
+
+        /// <summary>
+        /// 从手牌弃置后调用：在 <paramref name="state"/> 上同步尝试「手牌为 0」类被动（如【雄才大略】）。
+        /// </summary>
+        public static void DiscardFromHand(BattleState state, bool sideIsPlayer, List<int> handIndices)
+        {
+            if (state == null)
+                return;
+            SideState side = state.GetSide(sideIsPlayer);
+            DiscardFromHand(side, handIndices);
+            NotifyHandMaybeBecameZero(state, sideIsPlayer);
+        }
+
+        /// <summary>
+        /// 任意使该侧手牌数变动之后：若当前手牌为 0，尝试结算 <c>empty_hand_draw_two_once_per_turn</c> 等（由 <see cref="HandEmptyPassiveCoordinator"/> 判定是否满足）。
+        /// 注意：仅将牌移入打出区、攻击尚未确定时不得调用，以免仍可收回打出牌时误触。
+        /// </summary>
+        public static void NotifyHandMaybeBecameZero(BattleState state, bool sideIsPlayer)
+        {
+            if (state == null)
+                return;
+            HandEmptyPassiveCoordinator.OnHandMaybeBecameZero(state, sideIsPlayer);
         }
 
         public void InitFromDecks(DeckData playerDeck, DeckData opponentDeck)

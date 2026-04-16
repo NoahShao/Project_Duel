@@ -13,6 +13,8 @@ public sealed class SkillRuleDefinition
     public int Value1 { get; set; }
     public int Value2 { get; set; }
     public string StringValue1 { get; set; } = string.Empty;
+    /// <summary>扩展标记；与客户端 <c>SkillRuleDamageFlags.NonAttackDamageLocksToEnemyPlayerOnly</c> 一致。</summary>
+    public string StringValue2 { get; set; } = string.Empty;
 }
 
 public sealed class SkillRuleCollection

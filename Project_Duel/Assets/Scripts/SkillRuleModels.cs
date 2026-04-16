@@ -22,6 +22,21 @@ namespace JunzhenDuijue
         public int Value1;
         public int Value2;
         public string StringValue1 = string.Empty;
+        /// <summary>扩展标记。非攻击技伤害：若为 <see cref="SkillRuleDamageFlags.NonAttackDamageLocksToEnemyPlayerOnly"/> 则只能对敌方玩家造成伤害；否则离线局可由玩家选择己方/敌方玩家。</summary>
+        public string StringValue2 = string.Empty;
+    }
+
+    /// <summary>与 <see cref="SkillRuleEntry.StringValue2"/> 约定的取值。</summary>
+    public static class SkillRuleDamageFlags
+    {
+        /// <summary>技能描述明确「仅对敌方玩家造成伤害」时在规则表中填写此值。</summary>
+        public const string NonAttackDamageLocksToEnemyPlayerOnly = "damage_enemy_player_only";
+    }
+
+    public static class SkillRuleEntryExtensions
+    {
+        public static bool LocksNonAttackDamageToEnemyPlayerOnly(this SkillRuleEntry rule) =>
+            rule != null && string.Equals(rule.StringValue2 ?? string.Empty, SkillRuleDamageFlags.NonAttackDamageLocksToEnemyPlayerOnly, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

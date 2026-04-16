@@ -233,6 +233,9 @@ public static class AuthoritativeBattleEngine
             string skillKey = cardId + "_" + skillIndex;
             if (SkillFrameworkExecutor.TryApplyAttackSkillFromRegistry(state, skillKey, state.ActiveSide.PlayedThisPhase))
                 state.PendingAttackBonus = 0;
+            else if (string.Equals(skillKey, "NO005_0", StringComparison.Ordinal) &&
+                     AuthoritativeYuanShuLianZhu.TryAutoConfigureAttack(state, state.ActiveSide.PlayedThisPhase))
+                state.PendingAttackBonus = 0;
         }
 
         return true;

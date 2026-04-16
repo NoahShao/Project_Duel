@@ -27,7 +27,8 @@
       "EffectId": "discard_end_draw_reveal_red_heal_black_damage",
       "Value1": 1,
       "Value2": 2,
-      "StringValue1": ""
+      "StringValue1": "",
+      "StringValue2": ""
     },
     {
       "SkillKey": "NO002_0",

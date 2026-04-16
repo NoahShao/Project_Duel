@@ -7,8 +7,8 @@ namespace JunzhenDuijue
     /// <summary>
     /// 「手牌数为 0」同节点多条 <c>empty_hand_draw_two_once_per_turn</c>：先收集快照，再按顺序结算，
     /// 避免先发动导致摸牌后后续技能因手牌非空而无法触发。
-    /// 须在<strong>本回合行动方</strong>将打出区扑克牌移入弃牌堆、且相关结算/摸牌已写入状态后再调用（见 <see cref="BattlePhaseManager.AdvanceFromPlayPhase"/>），
-    /// 不得在仅将牌移入打出区时调用。
+    /// 在<strong>该侧手牌数已变为 0</strong> 的结算点调用（弃牌、虎步弃置、攻击技宣言完成、打出区进弃牌等），由本类判断是否满足效果；
+    /// 不得在仅将牌移入打出区、攻击尚未确定时调用（打出牌仍可收回时不应视为「手牌为 0」触发点）。
     /// </summary>
     public readonly struct HandEmptyPassiveEntry
     {

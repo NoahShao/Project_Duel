@@ -457,6 +457,8 @@ namespace JunzhenDuijue
             HideMatchResultPopups();
             CloseChaShiCourtRankChoicePopup();
             TearDownHuBuGuanYouPopup(false);
+            DestroyNonAttackDamageTargetPickRoot();
+            _nonAttackDamageTargetPickOnComplete = null;
             CloseHandEmptyOrderPopup();
             CloseSkillReadonlyInfoPopup();
             _battleMatchEnded = false;
@@ -1528,7 +1530,7 @@ namespace JunzhenDuijue
 
         private static void OpenMoralePopup()
         {
-            if (IsHuBuGuanYouPopupVisible())
+            if (IsHuBuGuanYouPopupVisible() || IsNonAttackDamageTargetPickVisible())
                 return;
             if (_state == null || !_state.IsPlayerTurn || _state.Player.Morale <= 0) return;
             if (IsPlayerNonPassiveInputBlocked())
@@ -2261,9 +2263,135 @@ namespace JunzhenDuijue
             _attackPatternPopupRoot.SetActive(true);
         }
 
-        private static bool AttackSkillNeedsPatternSubPopup(string cardId, int skillIndex)
+        /// <summary>【远矢连珠】二级确认：大7点 / 大10点（与 <see cref="OfflineSkillEngine"/> 分支一致）。</summary>
+        private static void OpenYuanShuAttackPatternPopup(int generalIndex, int skillIndex, string skillName)
         {
-            return string.Equals(SkillRuleHelper.MakeSkillKey(cardId ?? string.Empty, skillIndex), "NO002_0", System.StringComparison.Ordinal);
+            if (_attackPatternPopupRoot == null || _state == null || _attackPatternContent == null)
+                return;
+
+            var cards = _state.ActiveSide.PlayedThisPhase;
+            bool can0 = false;
+            bool can1 = false;
+            if (cards != null)
+            {
+                for (int yi = 0; yi < cards.Count; yi++)
+                {
+                    if (cards[yi].PlayedAsGeneral)
+                        continue;
+                    if (OfflineSkillEngine.YuanShuCanSelectTier7Damage(cards[yi]))
+                        can0 = true;
+                    if (OfflineSkillEngine.YuanShuCanSelectTier10Damage(cards[yi]))
+                        can1 = true;
+                }
+            }
+
+            foreach (Transform child in _attackPatternContent)
+                UnityEngine.Object.Destroy(child.gameObject);
+
+            if (_attackPatternTitle != null)
+                _attackPatternTitle.text = "\u9009\u62e9\u3010\u8fdc\u77e2\u8fde\u73e0\u3011\u7ed3\u7b97\u65b9\u5f0f";
+
+            string[] btnLabels =
+            {
+                "\u59277\u70b9\u5355\u724c",
+                "\u592710\u70b9\u5355\u724c",
+            };
+
+            string[] variantDescLines =
+            {
+                "\u59277\u70b9\u5355\u724c\uff1a\u4f60\u9020\u62101\u70b9\u4e0d\u53ef\u9632\u5fa1\u7684\u5175\u5203\u4f24\u5bb3\u3002",
+                "\u592710\u70b9\u5355\u724c\uff1a\u4f60\u9020\u62102\u70b9\u4e0d\u53ef\u9632\u5fa1\u7684\u5175\u5203\u4f24\u5bb3\u3002",
+            };
+
+            for (int i = 0; i < 2; i++)
+            {
+                int variant = i;
+                bool enabled = i == 0 ? can0 : can1;
+
+                var row = new GameObject("YuanShuPatternRow_" + i);
+                row.transform.SetParent(_attackPatternContent, false);
+                var rowV = row.AddComponent<VerticalLayoutGroup>();
+                rowV.spacing = 8f;
+                rowV.childAlignment = TextAnchor.UpperCenter;
+                rowV.childControlWidth = true;
+                rowV.childControlHeight = true;
+                rowV.childForceExpandWidth = true;
+                rowV.childForceExpandHeight = false;
+                rowV.padding = new RectOffset(0, 0, 0, 0);
+
+                var rowLe = row.AddComponent<LayoutElement>();
+                rowLe.minHeight = 120f;
+                rowLe.preferredHeight = 128f;
+                rowLe.flexibleHeight = 0f;
+
+                var buttonGo = new GameObject("YuanShuPatternBtn_" + i);
+                buttonGo.transform.SetParent(row.transform, false);
+                var btnLe = buttonGo.AddComponent<LayoutElement>();
+                btnLe.preferredHeight = 50f;
+                btnLe.minHeight = 50f;
+                btnLe.flexibleHeight = 0f;
+                var img = buttonGo.AddComponent<Image>();
+                img.sprite = GetWhiteSprite();
+                img.color = enabled ? new Color(0.22f, 0.48f, 0.82f, 1f) : new Color(0.32f, 0.32f, 0.36f, 0.85f);
+                var btn = buttonGo.AddComponent<Button>();
+                btn.targetGraphic = img;
+                btn.interactable = enabled;
+                btn.onClick.AddListener(() =>
+                {
+                    if (_state == null)
+                        return;
+                    _state.PendingAttackPatternVariant = variant;
+                    CloseAttackPatternPopup();
+                    if (_isOnlineMode)
+                        _ = OnlineClientService.SelectAttackSkillAsync(generalIndex, skillIndex);
+                    else
+                        BattlePhaseManager.NotifyAttackSkillSelected(true, generalIndex, skillIndex, skillName);
+                });
+
+                var btnText = CreateGameText(buttonGo.transform, btnLabels[i], 20);
+                if (btnText != null)
+                    SetFullRect(btnText.GetComponent<RectTransform>());
+
+                var descGo = new GameObject("YuanShuPatternDesc_" + i);
+                descGo.transform.SetParent(row.transform, false);
+                var descLe = descGo.AddComponent<LayoutElement>();
+                descLe.minHeight = 36f;
+                descLe.preferredHeight = -1f;
+                descLe.flexibleHeight = 0f;
+                var descT = CreateGameText(descGo.transform, variantDescLines[i], 14, TextAlignmentOptions.TopLeft);
+                if (descT != null)
+                {
+                    descT.enableWordWrapping = true;
+                    descT.color = new Color(0.82f, 0.86f, 0.9f, 1f);
+                    var dr = descT.GetComponent<RectTransform>();
+                    dr.anchorMin = new Vector2(0f, 1f);
+                    dr.anchorMax = new Vector2(1f, 1f);
+                    dr.pivot = new Vector2(0.5f, 1f);
+                    dr.sizeDelta = new Vector2(0f, 72f);
+                }
+            }
+
+            var backGo = new GameObject("Back");
+            backGo.transform.SetParent(_attackPatternContent, false);
+            var backLe = backGo.AddComponent<LayoutElement>();
+            backLe.preferredHeight = 48f;
+            backLe.minHeight = 48f;
+            var backImg = backGo.AddComponent<Image>();
+            backImg.sprite = GetWhiteSprite();
+            backImg.color = new Color(0.4f, 0.4f, 0.44f, 1f);
+            var backBtn = backGo.AddComponent<Button>();
+            backBtn.targetGraphic = backImg;
+            backBtn.onClick.AddListener(() =>
+            {
+                CloseAttackPatternPopup();
+                OpenPlayerAttackSkillFirstMenu();
+            });
+            var backTxt = CreateGameText(backGo.transform, "\u8fd4\u56de\u4e0a\u4e00\u7ea7", 20);
+            if (backTxt != null)
+                SetFullRect(backTxt.GetComponent<RectTransform>());
+
+            CollapsePlayerHandIfExpanded();
+            _attackPatternPopupRoot.SetActive(true);
         }
 
         private static void CommitAttackSkillAfterOptionalPatternPopup(int generalIndex, int skillIndex, string skillName)
@@ -2290,14 +2418,26 @@ namespace JunzhenDuijue
                 }
 
                 string ocardId = oside.GeneralCardIds[generalIndex] ?? string.Empty;
-                if (!AttackSkillNeedsPatternSubPopup(ocardId, skillIndex))
+                string oSkillKey = SkillRuleHelper.MakeSkillKey(ocardId, skillIndex);
+                if (string.Equals(oSkillKey, "NO002_0", System.StringComparison.Ordinal))
                 {
+                    CloseChoicePopup();
+                    OpenCeMaAttackPatternPopup(generalIndex, skillIndex, skillName);
+                    return;
+                }
+
+                if (string.Equals(oSkillKey, "NO005_0", System.StringComparison.Ordinal))
+                {
+                    var opPlayed = _state.ActiveSide.PlayedThisPhase;
+                    if (opPlayed != null && opPlayed.Count > 0)
+                        OfflineSkillEngine.AutoPickYuanShuPatternVariant(_state, opPlayed);
+                    else
+                        _state.PendingAttackPatternVariant = -1;
                     _ = OnlineClientService.SelectAttackSkillAsync(generalIndex, skillIndex);
                     return;
                 }
 
-                CloseChoicePopup();
-                OpenCeMaAttackPatternPopup(generalIndex, skillIndex, skillName);
+                _ = OnlineClientService.SelectAttackSkillAsync(generalIndex, skillIndex);
                 return;
             }
 
@@ -2326,15 +2466,30 @@ namespace JunzhenDuijue
             }
 
             string cardId = side.GeneralCardIds[generalIndex] ?? string.Empty;
-            if (!AttackSkillNeedsPatternSubPopup(cardId, skillIndex))
+            string skillKey = SkillRuleHelper.MakeSkillKey(cardId, skillIndex);
+            if (string.Equals(skillKey, "NO002_0", System.StringComparison.Ordinal))
             {
+                CloseChoicePopup();
+                OpenCeMaAttackPatternPopup(generalIndex, skillIndex, skillName);
+                return;
+            }
+
+            if (string.Equals(skillKey, "NO005_0", System.StringComparison.Ordinal))
+            {
+                if (OfflineSkillEngine.YuanShuHasAnyPatternOptionForPlayed(_state.ActiveSide.PlayedThisPhase))
+                {
+                    CloseChoicePopup();
+                    OpenYuanShuAttackPatternPopup(generalIndex, skillIndex, skillName);
+                    return;
+                }
+
                 _state.PendingAttackPatternVariant = -1;
                 BattlePhaseManager.NotifyAttackSkillSelected(true, generalIndex, skillIndex, skillName);
                 return;
             }
 
-            CloseChoicePopup();
-            OpenCeMaAttackPatternPopup(generalIndex, skillIndex, skillName);
+            _state.PendingAttackPatternVariant = -1;
+            BattlePhaseManager.NotifyAttackSkillSelected(true, generalIndex, skillIndex, skillName);
         }
 
         private static void BuildDiscardPhasePopup()
@@ -5258,6 +5413,9 @@ namespace JunzhenDuijue
         private static float _huBuGuanYouPrevTimeScale = 1f;
         private static int _huBuGuanYouSelectedHandIndex = -1;
         private static Action _huBuGuanYouOnComplete;
+        private static GameObject _nonAttackDamageTargetPickRoot;
+        private static float _nonAttackDamageTargetPickPrevTimeScale = 1f;
+        private static System.Action _nonAttackDamageTargetPickOnComplete;
         private static readonly List<Image> _huBuCardImages = new List<Image>();
         private static readonly List<Color> _huBuCardBaseColors = new List<Color>();
         private static readonly List<bool> _huBuCardIsBlack = new List<bool>();
@@ -5265,6 +5423,123 @@ namespace JunzhenDuijue
         /// <summary>【虎步关右】选择弹窗是否打开（用于屏蔽士气等）。</summary>
         public static bool IsHuBuGuanYouPopupVisible() =>
             _huBuGuanYouPopupRoot != null && _huBuGuanYouPopupRoot.activeSelf;
+
+        /// <summary>非攻击技伤害目标选择（如【仁者无敌】黑色）弹窗是否打开。</summary>
+        public static bool IsNonAttackDamageTargetPickVisible() =>
+            _nonAttackDamageTargetPickRoot != null && _nonAttackDamageTargetPickRoot.activeSelf;
+
+        /// <summary>
+        /// 非攻击技造成伤害且规则未锁定「仅对敌方玩家」时，由玩家选择伤害落在己方或敌方玩家（卡表需在 <see cref="SkillRuleEntry.StringValue2"/> 填
+        /// <see cref="SkillRuleDamageFlags.NonAttackDamageLocksToEnemyPlayerOnly"/> 才禁止选择）。
+        /// </summary>
+        public static void BeginNonAttackDamageTargetPick(BattleState state, bool sideIsPlayer, int amount, string cardIdRz, string skillName, PokerCard shown, System.Action onComplete)
+        {
+            if (_root == null || state == null || amount <= 0)
+            {
+                onComplete?.Invoke();
+                return;
+            }
+
+            DestroyNonAttackDamageTargetPickRoot();
+            _nonAttackDamageTargetPickOnComplete = onComplete;
+            _nonAttackDamageTargetPickPrevTimeScale = Time.timeScale;
+            Time.timeScale = 0f;
+
+            var root = new GameObject("NonAttackDamageTargetPick");
+            root.transform.SetParent(_root.transform, false);
+            _nonAttackDamageTargetPickRoot = root;
+            var rootRt = root.AddComponent<RectTransform>();
+            rootRt.anchorMin = Vector2.zero;
+            rootRt.anchorMax = Vector2.one;
+            rootRt.offsetMin = Vector2.zero;
+            rootRt.offsetMax = Vector2.zero;
+            var rootImg = root.AddComponent<Image>();
+            rootImg.color = new Color(0f, 0f, 0f, 0.55f);
+            rootImg.raycastTarget = true;
+            var canvas = root.AddComponent<Canvas>();
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = 62;
+            root.AddComponent<GraphicRaycaster>();
+
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(root.transform, false);
+            var pRt = panel.AddComponent<RectTransform>();
+            pRt.anchorMin = new Vector2(0.5f, 0.5f);
+            pRt.anchorMax = new Vector2(0.5f, 0.5f);
+            pRt.pivot = new Vector2(0.5f, 0.5f);
+            pRt.sizeDelta = new Vector2(720f, 360f);
+            panel.AddComponent<Image>().color = new Color(0.14f, 0.16f, 0.2f, 1f);
+
+            string shownName = shown.DisplayName ?? string.Empty;
+            string title = "\u3010" + (skillName ?? string.Empty) + "\u3011";
+            var titleT = CreateGameText(panel.transform, title, 24, TextAlignmentOptions.Center);
+            if (titleT != null)
+            {
+                var tr = titleT.GetComponent<RectTransform>();
+                tr.anchorMin = new Vector2(0.06f, 0.78f);
+                tr.anchorMax = new Vector2(0.94f, 0.95f);
+                tr.offsetMin = Vector2.zero;
+                tr.offsetMax = Vector2.zero;
+            }
+
+            string body = "\u5c55\u793a" + shownName + "\uff08\u9ed1\u8272\uff09\uff0c\u4f60\u9020\u6210" + amount + "\u70b9\u901a\u7528\u4f24\u5bb3\u3002\u8bf7\u9009\u62e9\u4f24\u5bb3\u76ee\u6807\u3002";
+            var bodyT = CreateGameText(panel.transform, body, 18, TextAlignmentOptions.Center);
+            if (bodyT != null)
+            {
+                var br = bodyT.GetComponent<RectTransform>();
+                br.anchorMin = new Vector2(0.06f, 0.52f);
+                br.anchorMax = new Vector2(0.94f, 0.76f);
+                br.offsetMin = Vector2.zero;
+                br.offsetMax = Vector2.zero;
+            }
+
+            void finishPick(bool damageOpponent)
+            {
+                OfflineSkillEngine.ApplyRenZheWuDiBlackDamageToTarget(state, sideIsPlayer, damageOpponent, amount);
+                string frag = OfflineSkillEngine.FormatRenZheWuDiBlackDamageLogFragment(damageOpponent, shown, amount);
+                BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(sideIsPlayer) + "\u5f03\u724c\u9636\u6bb5\u7ed3\u675f\uff0c\u3010\u4ec1\u8005\u65e0\u654c\u3011\uff1a" + frag);
+                string outcome = "\u5c55\u793a" + shownName + "\uff08\u9ed1\u8272\uff09\uff0c" + (damageOpponent ? "\u5bf9\u654c\u65b9\u73a9\u5bb6" : "\u5bf9\u5df1\u65b9\u73a9\u5bb6") + "\u9020\u6210" + amount + "\u70b9\u901a\u7528\u4f24\u5bb3";
+                SkillEffectBanner.Show(sideIsPlayer, false, SkillEffectBanner.GetRoleNameFromCardId(cardIdRz), skillName ?? string.Empty, outcome);
+                CheckImmediateGameOverAfterHpChange();
+                System.Action cb = _nonAttackDamageTargetPickOnComplete;
+                _nonAttackDamageTargetPickOnComplete = null;
+                DestroyNonAttackDamageTargetPickRoot();
+                Time.timeScale = _nonAttackDamageTargetPickPrevTimeScale <= 0f ? 1f : _nonAttackDamageTargetPickPrevTimeScale;
+                cb?.Invoke();
+            }
+
+            void addBtn(float anchorY, string label, bool damageOpponent)
+            {
+                var btnGo = new GameObject("Btn");
+                btnGo.transform.SetParent(panel.transform, false);
+                var bRt = btnGo.AddComponent<RectTransform>();
+                bRt.anchorMin = new Vector2(0.12f, anchorY);
+                bRt.anchorMax = new Vector2(0.88f, anchorY + 0.14f);
+                bRt.offsetMin = Vector2.zero;
+                bRt.offsetMax = Vector2.zero;
+                var img = btnGo.AddComponent<Image>();
+                img.sprite = GetWhiteSprite();
+                img.color = new Color(0.22f, 0.48f, 0.82f, 1f);
+                var btn = btnGo.AddComponent<Button>();
+                btn.targetGraphic = img;
+                btn.onClick.AddListener(() => finishPick(damageOpponent));
+                var t = CreateGameText(btnGo.transform, label, 20);
+                if (t != null)
+                    SetFullRect(t.GetComponent<RectTransform>());
+            }
+
+            addBtn(0.32f, "\u5bf9\u654c\u65b9\u73a9\u5bb6", true);
+            addBtn(0.14f, "\u5bf9\u5df1\u65b9\u73a9\u5bb6", false);
+        }
+
+        private static void DestroyNonAttackDamageTargetPickRoot()
+        {
+            if (_nonAttackDamageTargetPickRoot != null)
+            {
+                UnityEngine.Object.Destroy(_nonAttackDamageTargetPickRoot);
+                _nonAttackDamageTargetPickRoot = null;
+            }
+        }
 
         /// <summary>攻击宣言后、进入防御阶段前：询问是否弃置黑色手牌以额外出牌阶段。</summary>
         public static void BeginHuBuGuanYouOffer(Action onComplete)
@@ -5484,6 +5759,9 @@ namespace JunzhenDuijue
                 BattleFlowLog.Add(line);
             }
 
+            if (_state != null && !IsBattleMatchEnded())
+                BattleState.NotifyHandMaybeBecameZero(_state, _state.IsPlayerTurn);
+
             TearDownHuBuGuanYouPopup(true);
         }
 
@@ -5674,6 +5952,8 @@ namespace JunzhenDuijue
         {
             CloseSkillReadonlyInfoPopup();
             TearDownHuBuGuanYouPopup(false);
+            DestroyNonAttackDamageTargetPickRoot();
+            _nonAttackDamageTargetPickOnComplete = null;
             if (_root != null) _root.SetActive(false);
         }
     }

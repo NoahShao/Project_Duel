@@ -257,6 +257,7 @@ namespace JunzhenDuijue
                 if (_state == null)
                     return;
                 LogAttackSkillConfigured();
+                NotifyActiveSideHandEmptyPassivesIfMatchActive();
                 _state.CurrentPhaseStep = PhaseStep.End;
                 Debug.Log("[BattlePhaseManager] 通用攻击牌型已选定，进入 Defense 阶段");
                 RunPhaseStep();
@@ -356,7 +357,7 @@ namespace JunzhenDuijue
                 if (handIndices != null && handIndices.Length == over)
                 {
                     var indexList = new List<int>(handIndices);
-                    BattleState.DiscardFromHand(side, indexList);
+                    BattleState.DiscardFromHand(_state, isPlayer, indexList);
                     Debug.Log("[BattlePhaseManager] 弃牌完成，弃置 " + over + " 张");
                 }
                 else if (!isPlayer)
@@ -364,7 +365,7 @@ namespace JunzhenDuijue
                     var autoDiscard = new List<int>();
                     for (int i = 0; i < over; i++)
                         autoDiscard.Add(side.Hand.Count - 1 - i);
-                    BattleState.DiscardFromHand(side, autoDiscard);
+                    BattleState.DiscardFromHand(_state, isPlayer, autoDiscard);
                     Debug.Log("[BattlePhaseManager] 对手自动弃牌 " + over + " 张");
                 }
             }
@@ -555,6 +556,7 @@ namespace JunzhenDuijue
                         {
                             if (_state == null)
                                 return;
+                            NotifyActiveSideHandEmptyPassivesIfMatchActive();
                             _state.CurrentPhase = BattlePhase.Defense;
                             _state.CurrentPhaseStep = PhaseStep.Start;
                             RunPhaseStep();
@@ -699,12 +701,21 @@ namespace JunzhenDuijue
 
                     OnDiscardEnd?.Invoke(attackerIsPlayer);
                     OfflineSkillEngine.TryTriggerHandEmptyPassive(_state, attackerIsPlayer, out _);
-                    if (OfflineSkillEngine.TryApplyDiscardEndRenZheWuDi(_state, attackerIsPlayer, out string renZheMsg) && !string.IsNullOrEmpty(renZheMsg))
+
+                    void advanceDiscardToTurnEnd()
+                    {
+                        if (_state == null)
+                            return;
+                        _state.CurrentPhase = BattlePhase.TurnEnd;
+                        _state.CurrentPhaseStep = PhaseStep.Main;
+                        RunPhaseStep();
+                    }
+
+                    bool renZheDeferred = OfflineSkillEngine.TryApplyDiscardEndRenZheWuDi(_state, attackerIsPlayer, advanceDiscardToTurnEnd, out string renZheMsg);
+                    if (!renZheDeferred && !string.IsNullOrEmpty(renZheMsg))
                         BattleFlowLog.Add(FlowTurnBracket(attackerIsPlayer) + "\u5f03\u724c\u9636\u6bb5\u7ed3\u675f\uff0c\u3010\u4ec1\u8005\u65e0\u654c\u3011\uff1a" + renZheMsg);
 
-                    _state.CurrentPhase = BattlePhase.TurnEnd;
-                    _state.CurrentPhaseStep = PhaseStep.Main;
-                    RunPhaseStep();
+                    // 同步路径下 advanceDiscardToTurnEnd 已由 TryApplyDiscardEndRenZheWuDi 内部调用，切勿再调用一次（否则会连跑两次 TurnEnd，换边错乱甚至对手无限回合）。
                     return;
 
                 case BattlePhase.TurnEnd:
@@ -732,12 +743,19 @@ namespace JunzhenDuijue
             }
         }
 
+        /// <summary>对局未结束时，若当前行动方手牌已为 0，尝试结算「手牌为 0」类被动（如攻击宣言后、打出区牌仍在手牌已空）。</summary>
+        private static void NotifyActiveSideHandEmptyPassivesIfMatchActive()
+        {
+            if (_state == null || GameUI.IsBattleMatchEnded())
+                return;
+            BattleState.NotifyHandMaybeBecameZero(_state, _state.IsPlayerTurn);
+        }
+
         private static void AdvanceFromPlayPhase()
         {
             _state.ActiveSide.MovePlayedCardsToDiscard();
-            // 「手牌为 0」类被动（如【雄才大略】）须在打出区扑克已进入弃牌堆、且本段结算效果（如摸牌）处理后再判定；
-            // 打出区调整期间手牌可能暂时为 0，牌仍可收回，不得提前触发。
-            HandEmptyPassiveCoordinator.OnHandMaybeBecameZero(_state, _state.IsPlayerTurn);
+            // 「手牌为 0」类被动：打出区已进入弃牌堆后再判一次（与弃牌/虎步/攻击宣言等路径上的 Notify 互补；已触发键会跳过）。
+            BattleState.NotifyHandMaybeBecameZero(_state, _state.IsPlayerTurn);
             _state.ClearPendingCombat();
             _state.CurrentPlayPhaseIndex++;
             if (_state.CurrentPlayPhaseIndex < _state.TotalPlayPhasesThisTurn)
@@ -932,7 +950,7 @@ namespace JunzhenDuijue
         {
             if (!attackerIsPlayer && _opponentPlannedAttackGeneral != int.MinValue)
             {
-                MaybeAutoPickCeMaVariantBeforeSelection(_opponentPlannedAttackGeneral, _opponentPlannedAttackSkill, false);
+                MaybeAutoPickAttackPatternVariantBeforeSelection(_opponentPlannedAttackGeneral, _opponentPlannedAttackSkill, false);
                 SetAttackSkillSelection(_opponentPlannedAttackGeneral, _opponentPlannedAttackSkill, _opponentPlannedAttackSkillName, onAfterDeclareBanner);
                 ClearOpponentAttackPlan();
                 return;
@@ -940,7 +958,7 @@ namespace JunzhenDuijue
 
             if (TryFindTaggedSkill(attackerIsPlayer, "\u653b\u51fb\u6280", out int generalIndex, out int skillIndex, out string skillName))
             {
-                MaybeAutoPickCeMaVariantBeforeSelection(generalIndex, skillIndex, attackerIsPlayer);
+                MaybeAutoPickAttackPatternVariantBeforeSelection(generalIndex, skillIndex, attackerIsPlayer);
                 SetAttackSkillSelection(generalIndex, skillIndex, skillName, onAfterDeclareBanner);
                 return;
             }
@@ -948,7 +966,7 @@ namespace JunzhenDuijue
             SetAttackSkillSelection(-1, -1, "\u901a\u7528\u653b\u51fb", onAfterDeclareBanner);
         }
 
-        private static void MaybeAutoPickCeMaVariantBeforeSelection(int generalIndex, int skillIndex, bool attackerIsPlayer)
+        private static void MaybeAutoPickAttackPatternVariantBeforeSelection(int generalIndex, int skillIndex, bool attackerIsPlayer)
         {
             if (_state == null || generalIndex < 0)
                 return;
@@ -958,10 +976,11 @@ namespace JunzhenDuijue
                 return;
 
             string cardId = side.GeneralCardIds[generalIndex] ?? string.Empty;
-            if (!string.Equals(SkillRuleHelper.MakeSkillKey(cardId, skillIndex), "NO002_0", StringComparison.Ordinal))
-                return;
-
-            OfflineSkillEngine.AutoPickCeMaPatternVariant(_state, _state.ActiveSide.PlayedThisPhase);
+            string skillKey = SkillRuleHelper.MakeSkillKey(cardId, skillIndex);
+            if (string.Equals(skillKey, "NO002_0", StringComparison.Ordinal))
+                OfflineSkillEngine.AutoPickCeMaPatternVariant(_state, _state.ActiveSide.PlayedThisPhase);
+            else if (string.Equals(skillKey, "NO005_0", StringComparison.Ordinal))
+                OfflineSkillEngine.AutoPickYuanShuPatternVariant(_state, _state.ActiveSide.PlayedThisPhase);
         }
 
         private static void OfferHuBuGuanYouThenContinueMainEnd(Action continueAfter)
@@ -1048,6 +1067,7 @@ namespace JunzhenDuijue
                 if (_state == null || _state.PendingGenericAttackShapeChoicePending)
                     return;
                 LogAttackSkillConfigured();
+                NotifyActiveSideHandEmptyPassivesIfMatchActive();
                 onAfterDeclareBanner?.Invoke();
             });
 
@@ -1138,6 +1158,9 @@ namespace JunzhenDuijue
 
         private static string FlowTurnBracket(bool isPlayerTurn) =>
             isPlayerTurn ? "\u3010\u5df1\u65b9\u56de\u5408\u3011" : "\u3010\u654c\u65b9\u56de\u5408\u3011";
+
+        /// <summary>供战报/UI 与 <see cref="FlowTurnBracket"/> 一致使用。</summary>
+        public static string FormatFlowTurnBracketForBattleLog(bool isPlayerTurn) => FlowTurnBracket(isPlayerTurn);
 
         private static string FlowAttackerActor(bool attackerIsPlayer) =>
             attackerIsPlayer ? "\u5df1\u65b9\u73a9\u5bb6" : "\u654c\u65b9";

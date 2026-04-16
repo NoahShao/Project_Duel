@@ -25,6 +25,7 @@ namespace JunzhenDuijue
             public int TotalPlayPhasesThisTurn;
             public int PendingExtraPlayPhasesToGrant;
             public int PendingAttackPatternVariant;
+            public int PendingCeMaBannerShapeKind;
             public SelectedSkillKind PendingAttackSkillKind;
             public int PendingGenericAttackOptionIndex;
             public bool PendingGenericAttackShapeChoicePending;
@@ -49,6 +50,7 @@ namespace JunzhenDuijue
                 TotalPlayPhasesThisTurn = state.TotalPlayPhasesThisTurn,
                 PendingExtraPlayPhasesToGrant = state.PendingExtraPlayPhasesToGrant,
                 PendingAttackPatternVariant = state.PendingAttackPatternVariant,
+                PendingCeMaBannerShapeKind = state.PendingCeMaBannerShapeKind,
                 PendingAttackSkillKind = state.PendingAttackSkillKind,
                 PendingGenericAttackOptionIndex = state.PendingGenericAttackOptionIndex,
                 PendingGenericAttackShapeChoicePending = state.PendingGenericAttackShapeChoicePending,
@@ -74,6 +76,7 @@ namespace JunzhenDuijue
             state.TotalPlayPhasesThisTurn = snap.TotalPlayPhasesThisTurn;
             state.PendingExtraPlayPhasesToGrant = snap.PendingExtraPlayPhasesToGrant;
             state.PendingAttackPatternVariant = snap.PendingAttackPatternVariant;
+            state.PendingCeMaBannerShapeKind = snap.PendingCeMaBannerShapeKind;
             state.PendingAttackSkillKind = snap.PendingAttackSkillKind;
             state.PendingGenericAttackOptionIndex = snap.PendingGenericAttackOptionIndex;
             state.PendingGenericAttackShapeChoicePending = snap.PendingGenericAttackShapeChoicePending;
@@ -135,8 +138,11 @@ namespace JunzhenDuijue
             if (generalIndex < atkSide2.GeneralCardIds.Count)
             {
                 string cid2 = atkSide2.GeneralCardIds[generalIndex] ?? string.Empty;
-                if (string.Equals(SkillRuleHelper.MakeSkillKey(cid2, skillIndex), "NO002_0", StringComparison.Ordinal))
+                string previewKey = SkillRuleHelper.MakeSkillKey(cid2, skillIndex);
+                if (string.Equals(previewKey, "NO002_0", StringComparison.Ordinal))
                     OfflineSkillEngine.AutoPickCeMaPatternVariant(state, state.ActiveSide.PlayedThisPhase);
+                else if (string.Equals(previewKey, "NO005_0", StringComparison.Ordinal))
+                    OfflineSkillEngine.AutoPickYuanShuPatternVariant(state, state.ActiveSide.PlayedThisPhase);
             }
 
             int tp0g = snap.TotalPlayPhasesThisTurn + snap.PendingExtraPlayPhasesToGrant;

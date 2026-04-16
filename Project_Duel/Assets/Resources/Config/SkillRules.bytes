@@ -14,7 +14,8 @@
             "EffectId": "start_game_gain_morale_and_max",
             "Value1": 1,
             "Value2": 1,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO001_1",
@@ -27,7 +28,8 @@
             "EffectId": "discard_end_draw_reveal_red_heal_black_damage",
             "Value1": 1,
             "Value2": 2,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO002_0",
@@ -42,7 +44,8 @@
             "EffectId": "manual_primary_effect",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": "draw"
+            "StringValue1": "draw",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO003_0",
@@ -57,7 +60,8 @@
             "EffectId": "attack_red_bonus_damage",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": "red"
+            "StringValue1": "red",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO003_1",
@@ -73,7 +77,8 @@
             "EffectId": "primary_recover_discard_gain_extra_phase",
             "Value1": 1,
             "Value2": 4,
-            "StringValue1": "extra_phase_from_suits"
+            "StringValue1": "extra_phase_from_suits",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO004_0",
@@ -88,7 +93,8 @@
             "EffectId": "passive_chashi_jqk",
             "Value1": 0,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO004_1",
@@ -103,7 +109,8 @@
             "EffectId": "empty_hand_draw_two_once_per_turn",
             "Value1": 2,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO005_0",
@@ -118,7 +125,8 @@
             "EffectId": "attack_skill_skillframework",
             "Value1": 0,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO005_1",
@@ -133,7 +141,8 @@
             "EffectId": "attack_discard_black_gain_extra_phase",
             "Value1": 1,
             "Value2": 1,
-            "StringValue1": "black_discard"
+            "StringValue1": "black_discard",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO006_0",
@@ -148,7 +157,8 @@
             "EffectId": "play_phase_start_pay_morale_gain_resist",
             "Value1": 2,
             "Value2": 1,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO006_1",
@@ -163,7 +173,8 @@
             "EffectId": "defense_reveal_small8_reduce2_else_draw",
             "Value1": 2,
             "Value2": 8,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO007_0",
@@ -178,7 +189,8 @@
             "EffectId": "attack_pair_restore_morale_end_phase",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO008_0",
@@ -193,7 +205,8 @@
             "EffectId": "attack_damage_by_straight_length",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": "straight_length"
+            "StringValue1": "straight_length",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO008_1",
@@ -206,7 +219,8 @@
             "EffectId": "attack_pay_morale_bonus_damage",
             "Value1": 1,
             "Value2": 3,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO009_0",
@@ -219,7 +233,8 @@
             "EffectId": "primary_discard_any_draw_same",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": "discard_draw_same"
+            "StringValue1": "discard_draw_same",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO009_1",
@@ -232,7 +247,8 @@
             "EffectId": "discard_start_discard_all_flip_enemy",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO010_0",
@@ -247,7 +263,8 @@
             "EffectId": "income_end_all_players_discard_one",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO010_1",
@@ -262,7 +279,8 @@
             "EffectId": "attack_damage2_force_discard2",
             "Value1": 2,
             "Value2": 2,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO010_2",
@@ -277,7 +295,8 @@
             "EffectId": "defense_heal1_reclaim1",
             "Value1": 1,
             "Value2": 1,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO011_0",
@@ -292,7 +311,8 @@
             "EffectId": "attribute_damage_grant_poison",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO011_1",
@@ -308,7 +328,8 @@
             "EffectId": "fire_damage_triggers_poison",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO011_2",
@@ -323,7 +344,8 @@
             "EffectId": "attack_fire_damage_scaling",
             "Value1": 1,
             "Value2": 2,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO012_0",
@@ -336,7 +358,8 @@
             "EffectId": "damaged_or_discard_reveal_black_gain",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": "reveal_black_gain"
+            "StringValue1": "reveal_black_gain",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO012_1",
@@ -351,7 +374,8 @@
             "EffectId": "primary_draw_to_eight_gain_extra_phases",
             "Value1": 8,
             "Value2": 1,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO013_0",
@@ -366,7 +390,8 @@
             "EffectId": "attack_fixed_damage_by_combo",
             "Value1": 1,
             "Value2": 8,
-            "StringValue1": "combo_rank"
+            "StringValue1": "combo_rank",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO014_0",
@@ -384,7 +409,8 @@
             "EffectId": "primary_pindian_flip_and_damage",
             "Value1": 1,
             "Value2": 1,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO015_0",
@@ -400,7 +426,8 @@
             "EffectId": "damage_or_damaged_switch_form_draw",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO015_1",
@@ -413,7 +440,8 @@
             "EffectId": "damage_discard_bonus2",
             "Value1": 2,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO015_2",
@@ -428,7 +456,8 @@
             "EffectId": "defense_reduce_common_or_element_2",
             "Value1": 2,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO016_0",
@@ -441,7 +470,8 @@
             "EffectId": "first_play_face_jqk_as_wild",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO016_1",
@@ -456,7 +486,8 @@
             "EffectId": "attack_damage_by_two_generals_point_gap",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO017_0",
@@ -471,7 +502,8 @@
             "EffectId": "income_end_reveal_black_plus_damage_red_heal",
             "Value1": 1,
             "Value2": 2,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO017_1",
@@ -486,7 +518,8 @@
             "EffectId": "heart_small6_as_diamond",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO018_0",
@@ -501,7 +534,8 @@
             "EffectId": "discard_end_red_play_count_rewards",
             "Value1": 1,
             "Value2": 4,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO018_1",
@@ -514,7 +548,8 @@
             "EffectId": "prepare_remove_effect_heal2",
             "Value1": 2,
             "Value2": 1,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO019_0",
@@ -529,7 +564,8 @@
             "EffectId": "attack_lightning_damage_and_draw",
             "Value1": 2,
             "Value2": 3,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO019_1",
@@ -542,7 +578,8 @@
             "EffectId": "lightning_damage_gain_healing",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO020_0",
@@ -557,7 +594,8 @@
             "EffectId": "primary_raise_morale_cap_and_small3_no_flip",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO020_1",
@@ -570,7 +608,8 @@
             "EffectId": "primary_pay_morale_cap_gain_yofeng",
             "Value1": 1,
             "Value2": 1,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO021_0",
@@ -583,7 +622,8 @@
             "EffectId": "heal_then_deal1",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO021_1",
@@ -596,7 +636,8 @@
             "EffectId": "primary_store_cards_then_lightning_burst",
             "Value1": 36,
             "Value2": 8,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO022_0",
@@ -611,7 +652,8 @@
             "EffectId": "attack_damage_and_gain_healing",
             "Value1": 2,
             "Value2": 2,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO023_0",
@@ -624,7 +666,8 @@
             "EffectId": "effect_gain_choose_heal_or_damage",
             "Value1": 1,
             "Value2": 1,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO024_0",
@@ -639,7 +682,8 @@
             "EffectId": "defense_reveal_black_resist_red_healing",
             "Value1": 1,
             "Value2": 2,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO024_1",
@@ -655,7 +699,8 @@
             "EffectId": "anytime_remove_effect_layers",
             "Value1": 1,
             "Value2": 0,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO080_0",
@@ -672,7 +717,8 @@
             "EffectId": "defense_gain_armor_and_shaoguang",
             "Value1": 1,
             "Value2": 1,
-            "StringValue1": ""
+            "StringValue1": "",
+            "StringValue2": ""
         },
         {
             "SkillKey": "NO080_1",
@@ -688,7 +734,8 @@
             "EffectId": "primary_start_awaken_if_shaoguang7",
             "Value1": 7,
             "Value2": 0,
-            "StringValue1": "awaken"
+            "StringValue1": "awaken",
+            "StringValue2": ""
         }
     ]
 }

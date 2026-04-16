@@ -124,16 +124,24 @@ namespace JunzhenDuijue
         }
 
         /// <summary>
-        /// 【仁者无敌】弃牌阶段结束时：摸 Value1 张，展示最后一张；红色恢复 Value2 生命，黑色对敌方造成 Value2 点通用伤害。
+        /// 【仁者无敌】弃牌阶段结束时：摸 Value1 张，展示最后一张；红色恢复 Value2 生命；黑色造成 Value2 点通用伤害。
+        /// 若规则未将 <see cref="SkillRuleEntry.StringValue2"/> 设为 <see cref="SkillRuleDamageFlags.NonAttackDamageLocksToEnemyPlayerOnly"/>，则离线己方回合由玩家选择伤害落在己方或敌方玩家；否则仅对敌方玩家。
         /// </summary>
-        public static bool TryApplyDiscardEndRenZheWuDi(BattleState state, bool sideIsPlayer, out string message)
+        /// <returns>true 表示已弹出目标选择，调用方须等待 <paramref name="onFullyResolved"/> 再推进阶段；false 表示已同步结算完毕（或未触发），可立即调用 <paramref name="onFullyResolved"/>。</returns>
+        public static bool TryApplyDiscardEndRenZheWuDi(BattleState state, bool sideIsPlayer, System.Action onFullyResolved, out string message)
         {
             message = string.Empty;
             if (state == null)
+            {
+                onFullyResolved?.Invoke();
                 return false;
+            }
 
             if (!TryFindFaceUpRule(state, sideIsPlayer, e => string.Equals(e.EffectId, DiscardEndRenZheWuDiEffectId, StringComparison.Ordinal), out _, out _, out string cardIdRz, out SkillRuleEntry rule))
+            {
+                onFullyResolved?.Invoke();
                 return false;
+            }
 
             var side = state.GetSide(sideIsPlayer);
             int drawCount = Mathf.Max(1, rule.Value1);
@@ -141,7 +149,8 @@ namespace JunzhenDuijue
             if (side.Deck.Count <= 0 && side.DiscardPile.Count <= 0)
             {
                 message = "\u3010\u4ec1\u8005\u65e0\u654c\u3011\u724c\u5e93\u4e0e\u5f03\u724c\u5806\u7686\u7a7a\uff0c\u65e0\u6cd5\u6478\u724c";
-                return true;
+                onFullyResolved?.Invoke();
+                return false;
             }
 
             int beforeHand = side.Hand.Count;
@@ -149,29 +158,51 @@ namespace JunzhenDuijue
             if (drawn <= 0 || side.Hand.Count <= beforeHand)
             {
                 message = "\u3010\u4ec1\u8005\u65e0\u654c\u3011\u65e0\u6cd5\u5b8c\u6210\u6478\u724c";
-                return true;
+                onFullyResolved?.Invoke();
+                return false;
             }
 
             PokerCard shown = side.Hand[side.Hand.Count - 1];
-            string outcome;
             if (IsRed(shown))
             {
                 side.CurrentHp = Mathf.Min(side.MaxHp, side.CurrentHp + amount);
                 message = "\u3010\u4ec1\u8005\u65e0\u654c\u3011\u5c55\u793a" + shown.DisplayName + "\uff08\u7ea2\u8272\uff09\uff0c\u6062\u590d" + amount + "\u70b9\u751f\u547d";
-                outcome = "\u5c55\u793a" + shown.DisplayName + "\uff08\u7ea2\u8272\uff09\uff0c\u6062\u590d" + amount + "\u70b9\u751f\u547d";
-            }
-            else
-            {
-                var opp = state.GetSide(!sideIsPlayer);
-                opp.CurrentHp = Mathf.Max(0, opp.CurrentHp - amount);
-                message = "\u3010\u4ec1\u8005\u65e0\u654c\u3011\u5c55\u793a" + shown.DisplayName + "\uff08\u9ed1\u8272\uff09\uff0c\u5bf9\u654c\u65b9\u9020\u6210" + amount + "\u70b9\u901a\u7528\u4f24\u5bb3";
-                outcome = "\u5c55\u793a" + shown.DisplayName + "\uff08\u9ed1\u8272\uff09\uff0c\u5bf9\u654c\u65b9\u9020\u6210" + amount + "\u70b9\u901a\u7528\u4f24\u5bb3";
+                string outcome = "\u5c55\u793a" + shown.DisplayName + "\uff08\u7ea2\u8272\uff09\uff0c\u6062\u590d" + amount + "\u70b9\u751f\u547d";
+                SkillEffectBanner.Show(sideIsPlayer, false, SkillEffectBanner.GetRoleNameFromCardId(cardIdRz), rule.SkillName, outcome);
+                onFullyResolved?.Invoke();
+                return false;
             }
 
-            SkillEffectBanner.Show(sideIsPlayer, false, SkillEffectBanner.GetRoleNameFromCardId(cardIdRz), rule.SkillName, outcome);
-            GameUI.CheckImmediateGameOverAfterHpChange();
+            bool lockEnemy = rule.LocksNonAttackDamageToEnemyPlayerOnly();
+            if (lockEnemy || !sideIsPlayer || GameUI.IsOnlineBattle())
+            {
+                ApplyRenZheWuDiBlackDamageToTarget(state, sideIsPlayer, damageOpponent: true, amount);
+                message = "\u3010\u4ec1\u8005\u65e0\u654c\u3011\u5c55\u793a" + shown.DisplayName + "\uff08\u9ed1\u8272\uff09\uff0c\u5bf9\u654c\u65b9\u73a9\u5bb6\u9020\u6210" + amount + "\u70b9\u901a\u7528\u4f24\u5bb3";
+                string outcome = "\u5c55\u793a" + shown.DisplayName + "\uff08\u9ed1\u8272\uff09\uff0c\u5bf9\u654c\u65b9\u73a9\u5bb6\u9020\u6210" + amount + "\u70b9\u901a\u7528\u4f24\u5bb3";
+                SkillEffectBanner.Show(sideIsPlayer, false, SkillEffectBanner.GetRoleNameFromCardId(cardIdRz), rule.SkillName, outcome);
+                GameUI.CheckImmediateGameOverAfterHpChange();
+                onFullyResolved?.Invoke();
+                return false;
+            }
+
+            GameUI.BeginNonAttackDamageTargetPick(state, sideIsPlayer, amount, cardIdRz, rule.SkillName, shown, onFullyResolved);
+            message = string.Empty;
             return true;
         }
+
+        /// <param name="damageOpponent">true \u2192 \u5bf9\u654c\u65b9\u73a9\u5bb6\u9020\u6210\u4f24\u5bb3\uff1bfalse \u2192 \u5bf9\u5df1\u65b9\u73a9\u5bb6\u3002</param>
+        public static void ApplyRenZheWuDiBlackDamageToTarget(BattleState state, bool sideIsPlayer, bool damageOpponent, int amount)
+        {
+            if (state == null || amount <= 0)
+                return;
+            if (sideIsPlayer ^ damageOpponent)
+                GameUI.ApplyDamageToPlayer(amount);
+            else
+                GameUI.ApplyDamageToOpponent(amount);
+        }
+
+        public static string FormatRenZheWuDiBlackDamageLogFragment(bool damageOpponent, PokerCard shown, int amount) =>
+            "\u5c55\u793a" + (shown.DisplayName ?? string.Empty) + "\uff08\u9ed1\u8272\uff09\uff0c\u5bf9" + (damageOpponent ? "\u654c\u65b9\u73a9\u5bb6" : "\u5df1\u65b9\u73a9\u5bb6") + "\u9020\u6210" + amount + "\u70b9\u901a\u7528\u4f24\u5bb3";
 
         public static bool CanOfferPlayPhaseStartResist(BattleState state, bool sideIsPlayer, out int generalIndex, out int skillIndex, out SkillRuleEntry rule)
         {
@@ -252,7 +283,7 @@ namespace JunzhenDuijue
         public static bool TryTriggerHandEmptyPassive(BattleState state, bool sideIsPlayer, out string message)
         {
             message = string.Empty;
-            HandEmptyPassiveCoordinator.OnHandMaybeBecameZero(state, sideIsPlayer);
+            BattleState.NotifyHandMaybeBecameZero(state, sideIsPlayer);
             return false;
         }
 
@@ -280,21 +311,79 @@ namespace JunzhenDuijue
             }
         }
 
-        /// <summary>【策马斩将】两张红色单牌：打出区中至少含任意 2 张红色牌即可选用该分支。</summary>
-        public static bool CeMaTwoRedSinglesMatches(List<PokerCard> cards) =>
-            cards != null && CountRedCards(cards) >= 2;
-
-        /// <summary>【策马斩将】红色顺子：4 张均为红色且点数连续（A 可作 1 或 14）。</summary>
-        public static bool CeMaRedStraightMatches(List<PokerCard> cards) =>
-            cards != null && cards.Count == 4 && ContainsOnlyRedCards(cards) && PokerPatternRules.IsFlexibleStraight(cards, 4);
-
-        /// <summary>【策马斩将】红色同花顺：在红色顺子基础上同花色。</summary>
-        public static bool CeMaRedStraightFlushMatches(List<PokerCard> cards) =>
-            CeMaRedStraightMatches(cards) && PokerPatternRules.IsFlush(cards);
-
-        /// <summary>与选牌弹窗按钮文案一致，用于武将攻击技横幅副文案中的「牌型为【…】」。</summary>
-        public static string DescribeCeMaPatternShapeForBanner(List<PokerCard> cards)
+        /// <summary>策马牌型判定用素材：将牌打出不计入（与「多带无关牌」一致，只看扑克部分能否成式）。</summary>
+        public static List<PokerCard> CeMaAttackMaterial(List<PokerCard> cards)
         {
+            if (cards == null || cards.Count == 0)
+                return new List<PokerCard>();
+            var r = new List<PokerCard>(cards.Count);
+            for (int i = 0; i < cards.Count; i++)
+            {
+                if (!cards[i].PlayedAsGeneral)
+                    r.Add(cards[i]);
+            }
+
+            return r;
+        }
+
+        /// <summary>【策马斩将】两张红色单牌：素材中至少 2 张红色扑克即可。</summary>
+        public static bool CeMaTwoRedSinglesMatches(List<PokerCard> cards) =>
+            cards != null && CountRedCards(CeMaAttackMaterial(cards)) >= 2;
+
+        private static bool CeMaFourIsRedStraight(List<PokerCard> four) =>
+            four != null && four.Count == 4 && ContainsOnlyRedCards(four) && PokerPatternRules.IsFlexibleStraight(four, 4);
+
+        private static bool CeMaFourIsRedStraightFlush(List<PokerCard> four) =>
+            CeMaFourIsRedStraight(four) && PokerPatternRules.IsFlush(four);
+
+        private static bool CeMaEvalAnyFourSubset(List<PokerCard> material, System.Func<List<PokerCard>, bool> testFour)
+        {
+            if (material == null || testFour == null)
+                return false;
+            int n = material.Count;
+            if (n < 4)
+                return false;
+            for (int i0 = 0; i0 < n; i0++)
+            {
+                for (int i1 = i0 + 1; i1 < n; i1++)
+                {
+                    for (int i2 = i1 + 1; i2 < n; i2++)
+                    {
+                        for (int i3 = i2 + 1; i3 < n; i3++)
+                        {
+                            var four = new List<PokerCard>(4) { material[i0], material[i1], material[i2], material[i3] };
+                            if (testFour(four))
+                                return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>【策马斩将】红色顺子：素材中存在任意 4 张红色且构成顺子（可混带其余牌）。</summary>
+        public static bool CeMaRedStraightMatches(List<PokerCard> cards) =>
+            cards != null && CeMaEvalAnyFourSubset(CeMaAttackMaterial(cards), CeMaFourIsRedStraight);
+
+        /// <summary>【策马斩将】红色同花顺：素材中存在任意 4 张构成红色同花顺。</summary>
+        public static bool CeMaRedStraightFlushMatches(List<PokerCard> cards) =>
+            cards != null && CeMaEvalAnyFourSubset(CeMaAttackMaterial(cards), CeMaFourIsRedStraightFlush);
+
+        /// <summary>与选牌弹窗按钮文案一致，用于武将攻击技横幅副文案中的「牌型为【…】」。若 <paramref name="state"/> 上已写入本次策马分支则优先用之。</summary>
+        public static string DescribeCeMaPatternShapeForBanner(List<PokerCard> cards, BattleState state = null)
+        {
+            if (state != null && state.PendingCeMaBannerShapeKind >= 0)
+            {
+                return state.PendingCeMaBannerShapeKind switch
+                {
+                    2 => "\u7ea2\u8272\u540c\u82b1\u987a\uff08\u56db\u5f20\uff09",
+                    1 => "\u7ea2\u8272\u987a\u5b50\uff08\u56db\u5f20\uff09",
+                    0 => "\u4e24\u5f20\u7ea2\u8272\u5355\u724c",
+                    _ => string.Empty,
+                };
+            }
+
             if (cards == null)
                 return string.Empty;
             if (CeMaRedStraightFlushMatches(cards))
@@ -321,6 +410,91 @@ namespace JunzhenDuijue
                 state.PendingAttackPatternVariant = -1;
         }
 
+        /// <summary>【远矢连珠】大10点档：与技能框架首行一致（有效点数 &gt; 9，人牌须察势作10）。</summary>
+        public static bool YuanShuTier10RowMatches(PokerCard c) =>
+            !c.PlayedAsGeneral && YuanShuSingleCardMatchesRankWindow(c, minExclusive: 9, maxExclusive: 0, excludeFaceWithoutChaShiTen: true);
+
+        /// <summary>【远矢连珠】大7点档：与技能框架次行一致（6 &lt; 有效点数 &lt; 10）。</summary>
+        public static bool YuanShuTier7RowMatches(PokerCard c) =>
+            !c.PlayedAsGeneral && YuanShuSingleCardMatchesRankWindow(c, minExclusive: 6, maxExclusive: 10, excludeFaceWithoutChaShiTen: true);
+
+        /// <summary>弹窗「大7点」是否可选：满足大7点档，或满足大10点档时允许自愿按大7点结算（如黑桃10）。</summary>
+        public static bool YuanShuCanSelectTier7Damage(PokerCard c) =>
+            YuanShuTier7RowMatches(c) || YuanShuTier10RowMatches(c);
+
+        /// <summary>弹窗「大10点」是否可选。</summary>
+        public static bool YuanShuCanSelectTier10Damage(PokerCard c) => YuanShuTier10RowMatches(c);
+
+        /// <summary>打出区中是否存在至少一张可作【远矢连珠】结算的非将牌（可混带其余牌）。</summary>
+        public static bool YuanShuHasAnyPatternOptionForPlayed(List<PokerCard> played)
+        {
+            if (played == null || played.Count == 0)
+                return false;
+            for (int i = 0; i < played.Count; i++)
+            {
+                PokerCard c = played[i];
+                if (c.PlayedAsGeneral)
+                    continue;
+                if (YuanShuTier7RowMatches(c) || YuanShuTier10RowMatches(c))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>对手 AI / 预览：打出区中任一张满足大10点档则优先该档，否则任一张满足大7点档。</summary>
+        public static void AutoPickYuanShuPatternVariant(BattleState state, List<PokerCard> cards)
+        {
+            if (state == null)
+                return;
+            if (cards == null || cards.Count == 0)
+            {
+                state.PendingAttackPatternVariant = -1;
+                return;
+            }
+
+            bool any10 = false;
+            bool any7Strict = false;
+            for (int i = 0; i < cards.Count; i++)
+            {
+                PokerCard c = cards[i];
+                if (c.PlayedAsGeneral)
+                    continue;
+                if (YuanShuCanSelectTier10Damage(c))
+                    any10 = true;
+                if (YuanShuTier7RowMatches(c))
+                    any7Strict = true;
+            }
+
+            if (any10)
+                state.PendingAttackPatternVariant = 1;
+            else if (any7Strict)
+                state.PendingAttackPatternVariant = 0;
+            else
+                state.PendingAttackPatternVariant = -1;
+        }
+
+        /// <summary>与横幅「牌型为【…】」一致：依本次登记的基础伤害区分大7点 / 大10点单牌。</summary>
+        public static string DescribeYuanShuLianZhuShapeForBanner(BattleState state)
+        {
+            if (state == null)
+                return string.Empty;
+            return state.PendingBaseDamage >= 2 ? "\u592710\u70b9\u5355\u724c" : "\u59277\u70b9\u5355\u724c";
+        }
+
+        private static bool YuanShuSingleCardMatchesRankWindow(PokerCard c, int minExclusive, int maxExclusive, bool excludeFaceWithoutChaShiTen)
+        {
+            if (excludeFaceWithoutChaShiTen && PokerPatternRules.IsFaceCourtCard(c) && !c.ChaShiCourtPlayedAsTen)
+                return false;
+
+            int r = PokerPatternRules.GetRankForAttackThreshold(c);
+            if (minExclusive > 0 && r <= minExclusive)
+                return false;
+            if (maxExclusive > 0 && r >= maxExclusive)
+                return false;
+            return true;
+        }
+
         public static void ConfigureAttackSkill(BattleState state, bool attackerIsPlayer, int generalIndex, int skillIndex, Action afterAttackDeclareBanner = null)
         {
             if (state == null)
@@ -337,6 +511,7 @@ namespace JunzhenDuijue
             state.PendingPostResolveMoraleToAttacker = 0;
             state.PendingExtraPlayPhasesToGrant = 0;
             state.PendingCombatNote = string.Empty;
+            state.PendingCeMaBannerShapeKind = -1;
 
             if (!TryGetFaceUpRule(state, attackerIsPlayer, generalIndex, skillIndex, out string cardId, out _))
             {
@@ -359,6 +534,9 @@ namespace JunzhenDuijue
                 {
                     case "NO002_0":
                         handled = ConfigureCeMaZhanJiang(state, attackerIsPlayer, cards);
+                        break;
+                    case "NO005_0":
+                        handled = ConfigureYuanShuLianZhu(state, attackerIsPlayer, cards);
                         break;
                 }
             }
@@ -436,13 +614,105 @@ namespace JunzhenDuijue
             variant = state.PendingAttackPatternVariant;
             state.PendingAttackPatternVariant = -1;
 
-            return variant switch
+            bool ok = variant switch
             {
                 2 => TryApplyCeMaStraightFlush(state, cards),
                 1 => TryApplyCeMaRedStraightOnly(state, cards),
                 0 => TryApplyCeMaTwoRedSingles(state, cards),
                 _ => false,
             };
+            if (ok)
+                state.PendingCeMaBannerShapeKind = variant;
+            return ok;
+        }
+
+        private static bool ConfigureYuanShuLianZhu(BattleState state, bool attackerIsPlayer, List<PokerCard> cards)
+        {
+            if (cards == null || cards.Count == 0)
+                return false;
+
+            bool can10 = false;
+            bool can7 = false;
+            for (int i = 0; i < cards.Count; i++)
+            {
+                PokerCard c = cards[i];
+                if (c.PlayedAsGeneral)
+                    continue;
+                if (YuanShuCanSelectTier10Damage(c))
+                    can10 = true;
+                if (YuanShuCanSelectTier7Damage(c))
+                    can7 = true;
+            }
+
+            if (!can7 && !can10)
+                return false;
+
+            int variant = state.PendingAttackPatternVariant;
+            if (variant < 0)
+                AutoPickYuanShuPatternVariant(state, cards);
+
+            variant = state.PendingAttackPatternVariant;
+            state.PendingAttackPatternVariant = -1;
+
+            if (variant == 1 && can10)
+                return TryApplyYuanShuTier10(state, cards);
+            if (variant == 0 && can7)
+                return TryApplyYuanShuTier7(state, cards);
+            return false;
+        }
+
+        private static bool TryApplyYuanShuTier10(BattleState state, List<PokerCard> cards)
+        {
+            if (cards == null)
+                return false;
+            bool anchor = false;
+            for (int i = 0; i < cards.Count; i++)
+            {
+                if (cards[i].PlayedAsGeneral)
+                    continue;
+                if (YuanShuTier10RowMatches(cards[i]))
+                {
+                    anchor = true;
+                    break;
+                }
+            }
+
+            if (!anchor)
+                return false;
+
+            state.PendingBaseDamage = 2;
+            state.PendingDamageCategory = DamageCategory.Blade;
+            state.PendingDamageElement = DamageElement.None;
+            state.PendingIgnoreDefenseReduction = true;
+            AppendCombatNote(state, "\u3010\u8fdc\u77e2\u8fde\u73e0\u3011\u592710\u70b9\u5355\u724c\uff0c\u4f24\u5bb3\u6539\u4e3a2\u70b9\u4e0d\u53ef\u9632\u5fa1\u5175\u5203\u4f24\u5bb3");
+            return true;
+        }
+
+        private static bool TryApplyYuanShuTier7(BattleState state, List<PokerCard> cards)
+        {
+            if (cards == null)
+                return false;
+            bool anchor = false;
+            for (int i = 0; i < cards.Count; i++)
+            {
+                if (cards[i].PlayedAsGeneral)
+                    continue;
+                if (YuanShuCanSelectTier7Damage(cards[i]))
+                {
+                    anchor = true;
+                    break;
+                }
+            }
+
+            if (!anchor)
+                return false;
+
+            state.PendingBaseDamage = 1;
+            state.PendingDamageCategory = DamageCategory.Blade;
+            state.PendingDamageElement = DamageElement.None;
+            state.PendingIgnoreDefenseReduction = true;
+            AppendCombatNote(state, "\u3010\u8fdc\u77e2\u8fde\u73e0\u3011\u59277\u70b9\u5355\u724c\uff0c\u4f24\u5bb3\u6539\u4e3a1\u70b9\u4e0d\u53ef\u9632\u5fa1\u5175\u5203\u4f24\u5bb3");
+            return true;
         }
 
         private static void AppendPendingAttackDeclareModifiers(System.Text.StringBuilder line, BattleState state)
@@ -499,8 +769,10 @@ namespace JunzhenDuijue
                     var played = state.ActiveSide.PlayedThisPhase;
                     string skillKey = SkillRuleHelper.MakeSkillKey(atkCardId, state.PendingAttackSkillIndex);
                     string shape = string.Equals(skillKey, "NO002_0", StringComparison.Ordinal)
-                        ? DescribeCeMaPatternShapeForBanner(played)
-                        : GenericAttackShapes.DescribeShapeForLog(state, played);
+                        ? DescribeCeMaPatternShapeForBanner(played, state)
+                        : string.Equals(skillKey, "NO005_0", StringComparison.Ordinal)
+                            ? DescribeYuanShuLianZhuShapeForBanner(state)
+                            : GenericAttackShapes.DescribeShapeForLog(state, played);
 
                     var sb = new System.Text.StringBuilder();
                     if (!string.IsNullOrEmpty(shape))
@@ -711,18 +983,24 @@ namespace JunzhenDuijue
             return false;
         }
 
-        /// <summary>攻击技已配置且将造成伤害、场上存在可发动的【虎步关右】时，在进入防御阶段前询问攻击方。</summary>
+        /// <summary>
+        /// 将要使用攻击技造成伤害时：含【通用攻击技】与任意翻面武将的「攻击技」标签技能；场上存在可发动的【虎步关右】时，在进入防御阶段前询问攻击方。
+        /// </summary>
         public static bool ShouldOfferHuBuGuanYouBeforeDefense(BattleState state, bool attackerIsPlayer)
         {
             if (state == null)
                 return false;
             if (state.HuBuGuanYouWindowConsumedForCurrentAttack)
                 return false;
-            if (state.PendingAttackSkillKind != SelectedSkillKind.GeneralSkill)
-                return false;
             if (state.PendingBaseDamage + state.PendingAttackBonus <= 0)
                 return false;
             if (!SideHasFaceUpHuBuGuanYou(state, attackerIsPlayer))
+                return false;
+
+            if (state.PendingAttackSkillKind == SelectedSkillKind.GenericAttack)
+                return true;
+
+            if (state.PendingAttackSkillKind != SelectedSkillKind.GeneralSkill)
                 return false;
             if (state.PendingAttackGeneralIndex < 0)
                 return false;
