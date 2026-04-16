@@ -73,7 +73,8 @@ public class SkillFrameworkSyncTests
                 path,
                 """
                 {"Definitions":[{"SkillKey":"NO005_0","AttackPatterns":[
-                  {"Kind":1,"MinEffectiveRankExclusive":7,"BaseDamage":2,"Unblockable":true}
+                  {"Kind":1,"MinEffectiveRankExclusive":9,"ExcludeFaceCourtWithoutChaShiTen":true,"BaseDamage":2,"Unblockable":true},
+                  {"Kind":1,"MinEffectiveRankExclusive":6,"MaxEffectiveRankExclusive":10,"ExcludeFaceCourtWithoutChaShiTen":true,"BaseDamage":1,"Unblockable":true}
                 ]}]}
                 """);
 
@@ -85,7 +86,7 @@ public class SkillFrameworkSyncTests
                 MakeDeck("B", "NO006", "NO007", "NO008"));
             state.Phase = DuelPhaseName.Defense;
             state.ActiveSeatIndex = 0;
-            state.Sides[0].PlayedThisPhase.Add(new AuthoritativePokerCard { Suit = "\u9ed1\u6843", Rank = 11 });
+            state.Sides[0].PlayedThisPhase.Add(new AuthoritativePokerCard { Suit = "\u9ed1\u6843", Rank = 10 });
             AuthoritativeBattleEngine.TrySelectAttackSkill(state, 0, 0, 0, "\u8fdc\u77e2\u8fde\u73e0");
             state.PendingDefenseReduction = 5;
 

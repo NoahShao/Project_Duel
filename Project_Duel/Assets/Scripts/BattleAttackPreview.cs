@@ -31,6 +31,7 @@ namespace JunzhenDuijue
             public string PendingGenericAttackShapeDisplayName;
             public DamageCategory PendingDamageCategory;
             public DamageElement PendingDamageElement;
+            public bool HuBuGuanYouWindowConsumedForCurrentAttack;
         }
 
         private static Snapshot Capture(BattleState state)
@@ -54,6 +55,7 @@ namespace JunzhenDuijue
                 PendingGenericAttackShapeDisplayName = state.PendingGenericAttackShapeDisplayName ?? string.Empty,
                 PendingDamageCategory = state.PendingDamageCategory,
                 PendingDamageElement = state.PendingDamageElement,
+                HuBuGuanYouWindowConsumedForCurrentAttack = state.HuBuGuanYouWindowConsumedForCurrentAttack,
             };
             return snap;
         }
@@ -78,6 +80,7 @@ namespace JunzhenDuijue
             state.PendingGenericAttackShapeDisplayName = snap.PendingGenericAttackShapeDisplayName;
             state.PendingDamageCategory = snap.PendingDamageCategory;
             state.PendingDamageElement = snap.PendingDamageElement;
+            state.HuBuGuanYouWindowConsumedForCurrentAttack = snap.HuBuGuanYouWindowConsumedForCurrentAttack;
         }
 
         /// <summary>数值越大越好：优先总伤，其次额外阶段、摸牌、恢复等。</summary>

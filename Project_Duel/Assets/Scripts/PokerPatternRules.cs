@@ -33,14 +33,36 @@ namespace JunzhenDuijue
 
         public static bool IsBlackCard(PokerCard card) => IsBlackSuit(card.Suit);
 
-        /// <summary>默认点数（对子、两对、三条……都按这个分组）。A=1，2–10=面值，J/Q/K=0。</summary>
+        /// <summary>默认点数（对子、两对、三条……都按这个分组）。A=1，2–10=面值，J/Q/K=0；【察势】作10 时为 10。</summary>
         public static int GetComparisonPoint(PokerCard card)
         {
+            if (card.PlayedAsGeneral)
+            {
+                if (card.Rank == 1)
+                    return 1;
+                if (card.Rank >= 11 && card.Rank <= 13)
+                    return 0;
+                return card.Rank;
+            }
+
             if (card.Rank == 1)
                 return 1;
             if (card.Rank >= 11 && card.Rank <= 13)
+            {
+                if (card.ChaShiCourtPlayedAsTen)
+                    return 10;
                 return 0;
+            }
+
             return card.Rank;
+        }
+
+        /// <summary>单牌攻击阈值等：察势作10 时按 10，否则保持牌面 Rank（含 J=11）。</summary>
+        public static int GetRankForAttackThreshold(PokerCard c)
+        {
+            if (c.Rank >= 11 && c.Rank <= 13 && c.ChaShiCourtPlayedAsTen)
+                return 10;
+            return c.Rank;
         }
 
         /// <summary>人牌 J/Q/K（Rank 11–13）。</summary>
@@ -50,7 +72,12 @@ namespace JunzhenDuijue
         public static bool IsPairForCompositeShape(PokerCard a, PokerCard b)
         {
             if (IsFaceCourtCard(a) && IsFaceCourtCard(b))
+            {
+                if (a.ChaShiCourtPlayedAsTen || b.ChaShiCourtPlayedAsTen)
+                    return GetComparisonPoint(a) == GetComparisonPoint(b);
                 return true;
+            }
+
             return GetComparisonPoint(a) == GetComparisonPoint(b);
         }
 
@@ -58,9 +85,18 @@ namespace JunzhenDuijue
         public static bool IsTripleForCompositeShape(PokerCard a, PokerCard b, PokerCard c)
         {
             if (IsFaceCourtCard(a) && IsFaceCourtCard(b) && IsFaceCourtCard(c))
+            {
+                if (a.ChaShiCourtPlayedAsTen || b.ChaShiCourtPlayedAsTen || c.ChaShiCourtPlayedAsTen)
+                {
+                    int p = GetComparisonPoint(a);
+                    return GetComparisonPoint(b) == p && GetComparisonPoint(c) == p;
+                }
+
                 return true;
-            int p = GetComparisonPoint(a);
-            return GetComparisonPoint(b) == p && GetComparisonPoint(c) == p;
+            }
+
+            int p0 = GetComparisonPoint(a);
+            return GetComparisonPoint(b) == p0 && GetComparisonPoint(c) == p0;
         }
 
         /// <summary>五张能否分成一组三条 + 一组对子（两组「点数」可都落在人牌上，只看能否构成）。</summary>
@@ -146,8 +182,15 @@ namespace JunzhenDuijue
                 int r = cards[i].Rank;
                 if (r == 1)
                     options.Add(new[] { 1, 14 });
-                else if (r >= 2 && r <= 13)
+                else if (r is >= 2 and <= 10)
                     options.Add(new[] { r });
+                else if (r is >= 11 and <= 13)
+                {
+                    if (!cards[i].PlayedAsGeneral && cards[i].ChaShiCourtPlayedAsTen)
+                        options.Add(new[] { 10 });
+                    else
+                        options.Add(new[] { r });
+                }
                 else
                     return false;
             }

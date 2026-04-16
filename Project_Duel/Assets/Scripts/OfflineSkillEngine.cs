@@ -9,7 +9,7 @@ namespace JunzhenDuijue
         public const string ResistEffectKey = "\u62b5\u5fa1";
 
         private const string StartGameEffectId = "start_game_gain_morale_and_max";
-        private const string EmptyHandDrawEffectId = "empty_hand_draw_two_once_per_turn";
+        public const string EmptyHandDrawTwoOncePerTurnEffectId = "empty_hand_draw_two_once_per_turn";
         private const string PlayPhaseStartResistEffectId = "play_phase_start_pay_morale_gain_resist";
         private const string ManualPrimaryEffectId = "manual_primary_effect";
         private const string DiscardEndRenZheWuDiEffectId = "discard_end_draw_reveal_red_heal_black_damage";
@@ -19,6 +19,9 @@ namespace JunzhenDuijue
 
         /// <summary>【据水断桥】从弃牌堆回收并依花色数回血、额外出牌阶段。</summary>
         public const string PrimaryRecoverDiscardExtraPhaseEffectId = "primary_recover_discard_gain_extra_phase";
+
+        /// <summary>【虎步关右】在技能规则表中的 EffectId。</summary>
+        public const string HuBuGuanYouEffectId = "attack_discard_black_gain_extra_phase";
 
         private const string Hearts = "\u7ea2\u6843";
         private const string Diamonds = "\u65b9\u7247";
@@ -222,29 +225,35 @@ namespace JunzhenDuijue
             return "\u79fb\u96641\u5c42\u201c\u62b5\u5fa1\u201d\uff0c\u672c\u6b21\u4f24\u5bb3-1";
         }
 
-        public static bool TryTriggerHandEmptyPassive(BattleState state, bool sideIsPlayer, out string message)
+        /// <summary>由 <see cref="HandEmptyPassiveCoordinator"/> 在同节点顺序结算时调用。</summary>
+        public static void ApplyEmptyHandDrawOnce(BattleState state, bool sideIsPlayer, HandEmptyPassiveEntry entry, Action onAfterBanner = null)
         {
-            message = string.Empty;
             if (state == null)
-                return false;
+                return;
 
             var side = state.GetSide(sideIsPlayer);
-            if (side.Hand.Count != 0)
-                return false;
+            SkillRuleEntry rule = entry.Rule;
+            if (rule == null || !string.Equals(rule.EffectId, EmptyHandDrawTwoOncePerTurnEffectId, StringComparison.Ordinal))
+                return;
 
-            if (!TryFindFaceUpRule(state, sideIsPlayer, entry => entry.EffectId == EmptyHandDrawEffectId, out _, out int skillIndex, out string cardId, out SkillRuleEntry rule))
-                return false;
-
-            string skillKey = SkillRuleHelper.MakeSkillKey(cardId, skillIndex);
+            string skillKey = SkillRuleHelper.MakeSkillKey(entry.CardId, entry.SkillIndex);
             if (side.TriggeredSkillKeysThisTurn.Contains(skillKey))
-                return false;
+            {
+                onAfterBanner?.Invoke();
+                return;
+            }
 
             side.TriggeredSkillKeysThisTurn.Add(skillKey);
             int drawCount = Mathf.Max(1, rule.Value1);
             BattleState.Draw(side, drawCount);
-            message = "\u89e6\u53d1\u3010\u96c4\u624d\u5927\u7565\u3011\uff0c\u6478" + drawCount + "\u5f20\u724c";
-            SkillEffectBanner.Show(sideIsPlayer, false, SkillEffectBanner.GetRoleNameFromCardId(cardId), rule.SkillName, "\u6478" + drawCount + "\u5f20\u724c");
-            return true;
+            SkillEffectBanner.Show(sideIsPlayer, false, SkillEffectBanner.GetRoleNameFromCardId(entry.CardId), rule.SkillName, "\u6478" + drawCount + "\u5f20\u724c", onAfterBanner);
+        }
+
+        public static bool TryTriggerHandEmptyPassive(BattleState state, bool sideIsPlayer, out string message)
+        {
+            message = string.Empty;
+            HandEmptyPassiveCoordinator.OnHandMaybeBecameZero(state, sideIsPlayer);
+            return false;
         }
 
         public static bool TryActivatePrimarySkill(BattleState state, bool sideIsPlayer, int generalIndex, int skillIndex, out string message)
@@ -283,6 +292,20 @@ namespace JunzhenDuijue
         public static bool CeMaRedStraightFlushMatches(List<PokerCard> cards) =>
             CeMaRedStraightMatches(cards) && PokerPatternRules.IsFlush(cards);
 
+        /// <summary>与选牌弹窗按钮文案一致，用于武将攻击技横幅副文案中的「牌型为【…】」。</summary>
+        public static string DescribeCeMaPatternShapeForBanner(List<PokerCard> cards)
+        {
+            if (cards == null)
+                return string.Empty;
+            if (CeMaRedStraightFlushMatches(cards))
+                return "\u7ea2\u8272\u540c\u82b1\u987a\uff08\u56db\u5f20\uff09";
+            if (CeMaRedStraightMatches(cards))
+                return "\u7ea2\u8272\u987a\u5b50\uff08\u56db\u5f20\uff09";
+            if (CeMaTwoRedSinglesMatches(cards))
+                return "\u4e24\u5f20\u7ea2\u8272\u5355\u724c";
+            return string.Empty;
+        }
+
         /// <summary>对手 AI：在可满足的牌型中选最优（同花顺 &gt; 顺子 &gt; 双红单）。</summary>
         public static void AutoPickCeMaPatternVariant(BattleState state, List<PokerCard> cards)
         {
@@ -298,11 +321,12 @@ namespace JunzhenDuijue
                 state.PendingAttackPatternVariant = -1;
         }
 
-        public static void ConfigureAttackSkill(BattleState state, bool attackerIsPlayer, int generalIndex, int skillIndex)
+        public static void ConfigureAttackSkill(BattleState state, bool attackerIsPlayer, int generalIndex, int skillIndex, Action afterAttackDeclareBanner = null)
         {
             if (state == null)
                 return;
 
+            state.HuBuGuanYouWindowConsumedForCurrentAttack = false;
             state.PendingBaseDamage = 0;
             state.PendingDamageCategory = DamageCategory.None;
             state.PendingDamageElement = DamageElement.None;
@@ -319,7 +343,7 @@ namespace JunzhenDuijue
                 GenericAttackShapes.ApplyGenericAttack(state, state.ActiveSide.PlayedThisPhase, attackerIsPlayer);
                 state.PendingAttackSkillKind = SelectedSkillKind.GenericAttack;
                 state.PendingAttackSkillName = "\u901a\u7528\u653b\u51fb";
-                TryShowAttackDeclareBanner(state, attackerIsPlayer);
+                TryShowAttackDeclareBanner(state, attackerIsPlayer, afterAttackDeclareBanner);
                 return;
             }
 
@@ -351,7 +375,7 @@ namespace JunzhenDuijue
                 }
             }
 
-            TryShowAttackDeclareBanner(state, attackerIsPlayer);
+            TryShowAttackDeclareBanner(state, attackerIsPlayer, afterAttackDeclareBanner);
         }
 
         public static void ConfigureDefenseSkill(BattleState state, bool defenderIsPlayer, int generalIndex, int skillIndex)
@@ -437,43 +461,69 @@ namespace JunzhenDuijue
                 line.Append("\uff1b\u672c\u6b21\u4e0d\u53ef\u9632\u5fa1\u51cf\u4f24");
         }
 
-        private static void TryShowAttackDeclareBanner(BattleState state, bool attackerIsPlayer)
+        private static void TryShowAttackDeclareBanner(BattleState state, bool attackerIsPlayer, Action onAfterDeclareBanner)
         {
+            void finish()
+            {
+                onAfterDeclareBanner?.Invoke();
+            }
+
             if (BattleAttackPreview.SuppressSkillBanners || state == null)
+            {
+                finish();
                 return;
+            }
+
             if (state.PendingGenericAttackShapeChoicePending)
+            {
+                finish();
                 return;
+            }
 
             int declared = Mathf.Max(0, state.PendingBaseDamage + state.PendingAttackBonus);
-            var sb = new System.Text.StringBuilder();
-            sb.Append("\u5df2\u7533\u660e\u653b\u51fb\uff0c\u7ed3\u7b97\u65f6\u5c06\u9020\u6210").Append(declared).Append("\u70b9\u4f24\u5bb3");
-            AppendPendingAttackDeclareModifiers(sb, state);
-
-            string outcome = sb.ToString();
             bool isGeneric = state.PendingAttackSkillKind == SelectedSkillKind.GenericAttack;
             if (!isGeneric && declared <= 0 && state.PendingPostResolveDrawToAttacker <= 0 && state.PendingExtraPlayPhasesToGrant <= 0 && !state.PendingIgnoreDefenseReduction)
+            {
+                finish();
                 return;
+            }
+
+            DamageCategory damageCat = state.PendingDamageCategory == DamageCategory.None ? DamageCategory.Generic : state.PendingDamageCategory;
+            DamageElement damageEl = state.PendingDamageElement;
+            string damageClause = DamageTypeLabels.FormatDeclarePendingDamageClause(declared, damageCat, damageEl);
 
             if (state.PendingAttackSkillKind == SelectedSkillKind.GeneralSkill && state.PendingAttackGeneralIndex >= 0)
             {
                 if (TryGetFaceUpRule(state, attackerIsPlayer, state.PendingAttackGeneralIndex, state.PendingAttackSkillIndex, out string atkCardId, out SkillRuleEntry atkRule) && atkRule != null)
-                    SkillEffectBanner.Show(attackerIsPlayer, true, SkillEffectBanner.GetRoleNameFromCardId(atkCardId), atkRule.SkillName, outcome);
+                {
+                    var played = state.ActiveSide.PlayedThisPhase;
+                    string skillKey = SkillRuleHelper.MakeSkillKey(atkCardId, state.PendingAttackSkillIndex);
+                    string shape = string.Equals(skillKey, "NO002_0", StringComparison.Ordinal)
+                        ? DescribeCeMaPatternShapeForBanner(played)
+                        : GenericAttackShapes.DescribeShapeForLog(state, played);
+
+                    var sb = new System.Text.StringBuilder();
+                    if (!string.IsNullOrEmpty(shape))
+                        sb.Append("\u724c\u578b\u4e3a\u3010").Append(shape).Append("\u3011\uff0c");
+                    sb.Append(damageClause);
+                    AppendPendingAttackDeclareModifiers(sb, state);
+                    SkillEffectBanner.Show(attackerIsPlayer, true, SkillEffectBanner.GetRoleNameFromCardId(atkCardId), atkRule.SkillName, sb.ToString(), finish);
+                    return;
+                }
             }
             else if (isGeneric)
             {
-                if (!attackerIsPlayer)
-                {
-                    string shape = GenericAttackShapes.DescribeShapeForLog(state, state.ActiveSide.PlayedThisPhase);
-                    DamageCategory dc = state.PendingDamageCategory == DamageCategory.None ? DamageCategory.Generic : state.PendingDamageCategory;
-                    string dmgName = DamageTypeLabels.DamageTypeNameForAmountLine(dc, state.PendingDamageElement);
-                    var oppBanner = new System.Text.StringBuilder();
-                    oppBanner.Append("\u654c\u65b9\u73a9\u5bb6\u4f7f\u7528\u3010\u901a\u7528\u653b\u51fb\u6280\u3011\uff0c\u724c\u578b\u4e3a\u3010").Append(shape).Append("\u3011\uff0c\u5c06\u8981\u9020\u6210").Append(declared).Append("\u70b9").Append(dmgName);
-                    AppendPendingAttackDeclareModifiers(oppBanner, state);
-                    SkillEffectBanner.ShowRawLine(oppBanner.ToString());
-                }
-                else
-                    SkillEffectBanner.Show(attackerIsPlayer, true, "\u901a\u7528", "\u901a\u7528\u653b\u51fb", outcome);
+                string shape = GenericAttackShapes.DescribeShapeForLog(state, state.ActiveSide.PlayedThisPhase);
+                string camp = attackerIsPlayer ? "\u5df1\u65b9" : "\u654c\u65b9";
+                var sb = new System.Text.StringBuilder();
+                sb.Append(camp).Append("\u73a9\u5bb6\u4f7f\u7528\u3010\u901a\u7528\u653b\u51fb\u6280\u3011\uff0c\u724c\u578b\u4e3a\u3010").Append(shape).Append("\u3011\uff0c");
+                sb.Append(DamageTypeLabels.FormatResolvedDamageLine(declared, damageCat, damageEl));
+                AppendPendingAttackDeclareModifiers(sb, state);
+                SkillEffectBanner.ShowRawLine(sb.ToString(), finish);
+                return;
             }
+
+            finish();
         }
 
         private static bool TryApplyCeMaTwoRedSingles(BattleState state, List<PokerCard> cards)
@@ -482,7 +532,7 @@ namespace JunzhenDuijue
                 return false;
 
             state.PendingBaseDamage = 3;
-            state.PendingDamageCategory = DamageCategory.Generic;
+            state.PendingDamageCategory = DamageCategory.Blade;
             state.PendingDamageElement = DamageElement.None;
             AppendCombatNote(state, "\u3010\u7b56\u9a6c\u65a9\u5c06\u3011\u81f3\u5c112\u5f20\u7ea2\u724c\uff08\u542b\u4e8e\u6253\u51fa\u533a\uff09\uff0c\u4f24\u5bb3\u6539\u4e3a3");
             return true;
@@ -494,7 +544,7 @@ namespace JunzhenDuijue
                 return false;
 
             state.PendingBaseDamage = 6;
-            state.PendingDamageCategory = DamageCategory.Generic;
+            state.PendingDamageCategory = DamageCategory.Blade;
             state.PendingDamageElement = DamageElement.None;
             state.PendingExtraPlayPhasesToGrant += 1;
             AppendCombatNote(state, "\u3010\u7b56\u9a6c\u65a9\u5c06\u3011\u7ea2\u8272\u987a\u5b50\uff0c\u4f24\u5bb3\u6539\u4e3a6\uff0c\u5e76\u4e14\u989d\u5916\u83b7\u5f971\u4e2a\u51fa\u724c\u9636\u6bb5\uff08\u7ed3\u7b97\u65f6\u751f\u6548\uff09");
@@ -507,7 +557,7 @@ namespace JunzhenDuijue
                 return false;
 
             state.PendingBaseDamage = 7;
-            state.PendingDamageCategory = DamageCategory.Generic;
+            state.PendingDamageCategory = DamageCategory.Blade;
             state.PendingDamageElement = DamageElement.None;
             state.PendingIgnoreDefenseReduction = true;
             state.PendingPostResolveDrawToAttacker += 3;
@@ -618,6 +668,71 @@ namespace JunzhenDuijue
         }
 
         private static bool IsRed(PokerCard card) => PokerPatternRules.IsRedCard(card);
+
+        public static bool SideHasFaceUpHuBuGuanYou(BattleState state, bool sideIsPlayer)
+        {
+            if (state == null)
+                return false;
+            SideState side = state.GetSide(sideIsPlayer);
+            for (int gi = 0; gi < side.GeneralCardIds.Count; gi++)
+            {
+                if (!side.IsGeneralFaceUp(gi))
+                    continue;
+                string cid = side.GeneralCardIds[gi] ?? string.Empty;
+                SkillRuleEntry r = SkillRuleLoader.GetRule(cid, 1);
+                if (r != null && string.Equals(r.EffectId, HuBuGuanYouEffectId, StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool CardDataHasAttackSkillTag(CardData data, int skillIndex)
+        {
+            if (data == null)
+                return false;
+            if (!string.IsNullOrWhiteSpace(data.CardId) && SkillRuleLoader.HasTag(data.CardId, skillIndex, "\u653b\u51fb\u6280"))
+                return true;
+            List<string> tags = skillIndex switch
+            {
+                0 => data.SkillTags1,
+                1 => data.SkillTags2,
+                2 => data.SkillTags3,
+                _ => null
+            };
+            if (tags == null)
+                return false;
+            for (int i = 0; i < tags.Count; i++)
+            {
+                if (string.Equals(tags[i], "\u653b\u51fb\u6280", StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>攻击技已配置且将造成伤害、场上存在可发动的【虎步关右】时，在进入防御阶段前询问攻击方。</summary>
+        public static bool ShouldOfferHuBuGuanYouBeforeDefense(BattleState state, bool attackerIsPlayer)
+        {
+            if (state == null)
+                return false;
+            if (state.HuBuGuanYouWindowConsumedForCurrentAttack)
+                return false;
+            if (state.PendingAttackSkillKind != SelectedSkillKind.GeneralSkill)
+                return false;
+            if (state.PendingBaseDamage + state.PendingAttackBonus <= 0)
+                return false;
+            if (!SideHasFaceUpHuBuGuanYou(state, attackerIsPlayer))
+                return false;
+            if (state.PendingAttackGeneralIndex < 0)
+                return false;
+            SideState atk = state.GetSide(attackerIsPlayer);
+            if (state.PendingAttackGeneralIndex >= atk.GeneralCardIds.Count)
+                return false;
+            string cid = atk.GeneralCardIds[state.PendingAttackGeneralIndex] ?? string.Empty;
+            CardData data = CardTableLoader.GetCard(CardTableLoader.CardIdToNumber(cid));
+            return CardDataHasAttackSkillTag(data, state.PendingAttackSkillIndex);
+        }
 
         private static void AppendCombatNote(BattleState state, string note)
         {

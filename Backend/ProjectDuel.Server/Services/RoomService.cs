@@ -345,7 +345,7 @@ public sealed class RoomService
             await SendErrorAsync(session, "room_not_joined", "Join a room first.");
             return;
         }
-        if (!AuthoritativeBattleEngine.TryPlayCards(match!, slot!.SeatIndex, request.HandIndices))
+        if (!AuthoritativeBattleEngine.TryPlayCards(match!, slot!.SeatIndex, request.HandIndices, request.ChaShiCourtChoices, _configService))
         {
             await SendErrorAsync(session, "invalid_play", "Unable to play cards in current state.");
             return;

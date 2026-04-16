@@ -9,6 +9,9 @@ public sealed class AuthoritativePokerCard
 {
     public string Suit { get; set; } = string.Empty;
     public int Rank { get; set; }
+    /// <summary>【察势】由玩家声明：非角色 J/Q/K 是否按 10 点参与牌型（默认 false 为原有 0/11–13 规则）。</summary>
+    public bool ChaShiCourtPlayedAsTen { get; set; }
+
     public string DisplayName => Suit + (Rank switch { 1 => "A", 11 => "J", 12 => "Q", 13 => "K", _ => Rank.ToString() });
 }
 

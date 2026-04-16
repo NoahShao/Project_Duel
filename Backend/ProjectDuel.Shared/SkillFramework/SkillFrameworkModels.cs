@@ -73,6 +73,8 @@ public sealed class AttackPatternRow
     public bool RequireAllBlack { get; set; }
     public bool RequireNotFlush { get; set; }
     public int MinEffectiveRankExclusive { get; set; }
+    public int MaxEffectiveRankExclusive { get; set; }
+    public bool ExcludeFaceCourtWithoutChaShiTen { get; set; }
     public int BaseDamage { get; set; }
     public bool Unblockable { get; set; }
     public int ExtraPlayPhases { get; set; }

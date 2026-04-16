@@ -96,6 +96,10 @@ namespace JunzhenDuijue
         public bool RequireNotFlush;
         /// <summary>仅 SingleCard：有效点数 &gt; 该值时匹配（如 7 表示 8 点及以上）</summary>
         public int MinEffectiveRankExclusive;
+        /// <summary>仅 SingleCard：&gt;0 时要求有效点数 &lt; 该值（如 10 表示仅 9 及以下，用于「大7」与「大10」分两档）</summary>
+        public int MaxEffectiveRankExclusive;
+        /// <summary>仅 SingleCard：为 true 时排除人牌 J/Q/K 且未作察势「作10」的牌（远矢连珠等）</summary>
+        public bool ExcludeFaceCourtWithoutChaShiTen;
         public int BaseDamage;
         public bool Unblockable;
         public int ExtraPlayPhases;

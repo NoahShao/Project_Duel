@@ -263,7 +263,22 @@ namespace JunzhenDuijue
 
         public static Task SetReadyAsync(bool isReady) => SendPayloadAsync(OnlineClientMessageTypes.SetReady, new OnlineSetReadyRequest { IsReady = isReady });
         public static Task EndPhaseAsync() => SendPayloadAsync(OnlineClientMessageTypes.EndPhase, new EmptyPayload());
-        public static Task PlayCardAsync(int handIndex) => SendPayloadAsync(OnlineClientMessageTypes.PlayCards, new OnlinePlayCardsRequest { HandIndices = new System.Collections.Generic.List<int> { handIndex } });
+        public static Task PlayCardsAsync(System.Collections.Generic.IReadOnlyList<int> handIndices, System.Collections.Generic.IReadOnlyList<(int handIndex, bool useAsTen)> chaShiCourtChoices = null)
+        {
+            var req = new OnlinePlayCardsRequest { HandIndices = new System.Collections.Generic.List<int>(handIndices) };
+            if (chaShiCourtChoices != null && chaShiCourtChoices.Count > 0)
+            {
+                for (int i = 0; i < chaShiCourtChoices.Count; i++)
+                {
+                    (int hi, bool ut) = chaShiCourtChoices[i];
+                    req.ChaShiCourtChoices.Add(new ChaShiCourtChoiceWire { HandIndex = hi, UseAsTen = ut });
+                }
+            }
+
+            return SendPayloadAsync(OnlineClientMessageTypes.PlayCards, req);
+        }
+
+        public static Task PlayCardAsync(int handIndex) => PlayCardsAsync(new System.Collections.Generic.List<int> { handIndex });
         public static Task TakeBackPlayedCardAsync(int playedIndex) => SendPayloadAsync(OnlineClientMessageTypes.TakeBackPlayedCard, new OnlineTakeBackPlayedCardRequest { PlayedIndex = playedIndex });
         public static Task ActivatePrimarySkillAsync(int generalIndex, int skillIndex) => SendPayloadAsync(OnlineClientMessageTypes.ActivatePrimarySkill, new OnlineSelectSkillRequest { GeneralIndex = generalIndex, SkillIndex = skillIndex });
         public static Task SelectAttackSkillAsync(int generalIndex, int skillIndex) => SendPayloadAsync(OnlineClientMessageTypes.SelectAttackSkill, new OnlineSelectSkillRequest { GeneralIndex = generalIndex, SkillIndex = skillIndex });

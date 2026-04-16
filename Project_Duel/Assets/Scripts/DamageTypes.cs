@@ -67,5 +67,13 @@ namespace JunzhenDuijue
             string type = DamageTypeNameForAmountLine(category, element);
             return "\u9020\u6210" + finalAmount + "\u70b9" + type;
         }
+
+        /// <summary>攻击伤害预告横幅用：「结算时将造成」+ N 点 + 类型（如 3 点兵刃伤害），避免「3 点伤害，兵刃伤害」重复表述。</summary>
+        public static string FormatDeclarePendingDamageClause(int amount, DamageCategory category, DamageElement element)
+        {
+            DamageCategory c = category == DamageCategory.None ? DamageCategory.Generic : category;
+            int a = amount < 0 ? 0 : amount;
+            return "\u7ed3\u7b97\u65f6\u5c06\u9020\u6210" + a + "\u70b9" + DamageTypeNameForAmountLine(c, element);
+        }
     }
 }

@@ -219,10 +219,21 @@ namespace JunzhenDuijue
                 case AttackPatternKind.SingleCard:
                     if (shape.CardCount != 1)
                         return false;
+                    if (row.ExcludeFaceCourtWithoutChaShiTen &&
+                        PokerPatternRules.IsFaceCourtCard(cards[0]) &&
+                        !cards[0].ChaShiCourtPlayedAsTen)
+                        return false;
                     if (row.MinEffectiveRankExclusive > 0)
                     {
-                        int r = SkillFrameworkCardAnalysis.GetEffectiveRank(state, sideIsPlayer, cards[0]);
+                        int r = PokerPatternRules.GetRankForAttackThreshold(cards[0]);
                         if (r <= row.MinEffectiveRankExclusive)
+                            return false;
+                    }
+
+                    if (row.MaxEffectiveRankExclusive > 0)
+                    {
+                        int rMax = PokerPatternRules.GetRankForAttackThreshold(cards[0]);
+                        if (rMax >= row.MaxEffectiveRankExclusive)
                             return false;
                     }
 

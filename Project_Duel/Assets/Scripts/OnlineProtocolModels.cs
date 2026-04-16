@@ -63,7 +63,13 @@ namespace JunzhenDuijue
     [Serializable] public class OnlineCreateRoomRequest { public string PlayerName = string.Empty; public OnlineDeckSelectionDto Deck = new OnlineDeckSelectionDto(); }
     [Serializable] public class OnlineJoinRoomRequest { public string RoomId = string.Empty; public string PlayerName = string.Empty; public OnlineDeckSelectionDto Deck = new OnlineDeckSelectionDto(); }
     [Serializable] public class OnlineSetReadyRequest { public bool IsReady; }
-    [Serializable] public class OnlinePlayCardsRequest { public List<int> HandIndices = new List<int>(); }
+    [Serializable] public class ChaShiCourtChoiceWire { public int HandIndex; public bool UseAsTen; }
+
+    [Serializable] public class OnlinePlayCardsRequest
+    {
+        public List<int> HandIndices = new List<int>();
+        public List<ChaShiCourtChoiceWire> ChaShiCourtChoices = new List<ChaShiCourtChoiceWire>();
+    }
     [Serializable] public class OnlineTakeBackPlayedCardRequest { public int PlayedIndex; }
     [Serializable] public class OnlineSelectSkillRequest { public int GeneralIndex; public int SkillIndex; }
     [Serializable] public class OnlineUseMoraleRequest { public int EffectIndex; public int GeneralIndex = -1; public bool HasGeneralIndex; }
@@ -74,7 +80,7 @@ namespace JunzhenDuijue
     [Serializable] public class OnlineErrorResponse { public string Code = string.Empty; public string Message = string.Empty; }
     [Serializable] public class OnlinePlayerSlotSnapshot { public int SeatIndex; public string SessionId = string.Empty; public string PlayerName = string.Empty; public string DeckId = string.Empty; public bool IsReady; public bool IsConnected; }
     [Serializable] public class OnlineRoomSnapshotResponse { public string RoomId = string.Empty; public OnlineRoomStatus Status; public int TurnNumber; public int ActiveSeatIndex; public OnlineDuelPhaseName Phase; public List<OnlinePlayerSlotSnapshot> Players = new List<OnlinePlayerSlotSnapshot>(); }
-    [Serializable] public class OnlineBattleCardDto { public string Suit = string.Empty; public int Rank; public string DisplayName = string.Empty; }
+    [Serializable] public class OnlineBattleCardDto { public string Suit = string.Empty; public int Rank; public string DisplayName = string.Empty; public bool ChaShiCourtPlayedAsTen; }
     [Serializable] public class OnlineBattleSideSnapshot { public int SeatIndex; public string PlayerName = string.Empty; public string DeckId = string.Empty; public int DeckCount; public int HandCount; public int DiscardCount; public int CurrentHp; public int MaxHp; public int Morale; public int MoraleCap = 2; public List<bool> MoraleUsedThisTurn = new List<bool>(); public List<string> GeneralCardIds = new List<string>(); public List<bool> GeneralFaceUp = new List<bool>(); public List<OnlineBattleCardDto> DiscardTopPreview = new List<OnlineBattleCardDto>(); public List<OnlineBattleCardDto> DiscardCards = new List<OnlineBattleCardDto>(); }
     [Serializable] public class OnlineBattleSnapshotResponse { public string RoomId = string.Empty; public int LocalSeatIndex; public int ActiveSeatIndex; public int TurnNumber; public OnlineDuelPhaseName Phase; public int HandLimit; public int TotalPlayPhasesThisTurn; public int CurrentPlayPhaseIndex; public string PendingAttackSkillName = string.Empty; public string PendingDefenseSkillName = string.Empty; public OnlineBattleSideSnapshot Self = new OnlineBattleSideSnapshot(); public OnlineBattleSideSnapshot Opponent = new OnlineBattleSideSnapshot(); public List<OnlineBattleCardDto> SelfHand = new List<OnlineBattleCardDto>(); public List<OnlineBattleCardDto> PlayedCards = new List<OnlineBattleCardDto>(); }
     [Serializable] public class OnlinePongResponse { public string Now = string.Empty; }

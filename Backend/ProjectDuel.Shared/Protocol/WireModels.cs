@@ -49,9 +49,18 @@ public sealed class EndPhaseRequest
 {
 }
 
+public sealed class ChaShiCourtChoiceDto
+{
+    public int HandIndex { get; set; }
+    public bool UseAsTen { get; set; }
+}
+
 public sealed class PlayCardsRequest
 {
     public List<int> HandIndices { get; set; } = new();
+
+    /// <summary>【察势】对本次打出的非角色 J/Q/K 的声明；HandIndex 须与 <see cref="HandIndices"/> 中一致。</summary>
+    public List<ChaShiCourtChoiceDto>? ChaShiCourtChoices { get; set; }
 }
 
 public sealed class TakeBackPlayedCardRequest

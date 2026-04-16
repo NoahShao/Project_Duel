@@ -5,6 +5,7 @@ public sealed class BattleCardDto
     public string Suit { get; set; } = string.Empty;
     public int Rank { get; set; }
     public string DisplayName { get; set; } = string.Empty;
+    public bool ChaShiCourtPlayedAsTen { get; set; }
 }
 
 public sealed class BattleSideSnapshot

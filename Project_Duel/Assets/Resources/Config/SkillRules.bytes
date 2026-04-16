@@ -80,13 +80,15 @@
             "CardId": "NO004",
             "SkillIndex": 0,
             "SkillName": "察势",
-            "Tags": [],
-            "TriggerHint": "Manual",
-            "AllowOnOpponentTurn": false,
-            "EffectId": "manual_primary_effect",
-            "Value1": 1,
+            "Tags": [
+                "持续技"
+            ],
+            "TriggerHint": "TriggeredPassive",
+            "AllowOnOpponentTurn": true,
+            "EffectId": "passive_chashi_jqk",
+            "Value1": 0,
             "Value2": 0,
-            "StringValue1": "draw"
+            "StringValue1": ""
         },
         {
             "SkillKey": "NO004_1",
@@ -113,18 +115,20 @@
             ],
             "TriggerHint": "PlayPhaseAttack",
             "AllowOnOpponentTurn": false,
-            "EffectId": "manual_primary_effect",
-            "Value1": 1,
+            "EffectId": "attack_skill_skillframework",
+            "Value1": 0,
             "Value2": 0,
-            "StringValue1": "draw"
+            "StringValue1": ""
         },
         {
             "SkillKey": "NO005_1",
             "CardId": "NO005",
             "SkillIndex": 1,
             "SkillName": "虎步关右",
-            "Tags": [],
-            "TriggerHint": "Manual",
+            "Tags": [
+                "持续技"
+            ],
+            "TriggerHint": "TriggeredPassive",
             "AllowOnOpponentTurn": false,
             "EffectId": "attack_discard_black_gain_extra_phase",
             "Value1": 1,

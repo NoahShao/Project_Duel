@@ -47,7 +47,7 @@ public static class AuthoritativeBattleEngine
         return true;
     }
 
-    public static bool TryPlayCards(AuthoritativeBattleState state, int seatIndex, IReadOnlyList<int> handIndices)
+    public static bool TryPlayCards(AuthoritativeBattleState state, int seatIndex, IReadOnlyList<int> handIndices, IReadOnlyList<ChaShiCourtChoiceDto>? chaShiCourtChoices = null, ISkillRuleLookup? skillRules = null)
     {
         if (!IsActiveSeat(state, seatIndex) || state.Phase != DuelPhaseName.Main || handIndices == null || handIndices.Count == 0)
             return false;
@@ -62,6 +62,37 @@ public static class AuthoritativeBattleEngine
                 return false;
         }
 
+        var choiceMap = new Dictionary<int, bool>();
+        if (chaShiCourtChoices != null)
+        {
+            foreach (ChaShiCourtChoiceDto ch in chaShiCourtChoices)
+                choiceMap[ch.HandIndex] = ch.UseAsTen;
+        }
+
+        foreach (int handIndex in sorted)
+        {
+            var card = side.Hand[handIndex];
+            bool need = HandCardRequiresChaShiChoice(card, side, skillRules);
+            if (need)
+            {
+                if (!choiceMap.TryGetValue(handIndex, out bool useTen))
+                    return false;
+                card.ChaShiCourtPlayedAsTen = useTen;
+            }
+            else
+            {
+                if (choiceMap.ContainsKey(handIndex))
+                    return false;
+                card.ChaShiCourtPlayedAsTen = false;
+            }
+        }
+
+        foreach (int choiceIdx in choiceMap.Keys)
+        {
+            if (!sorted.Contains(choiceIdx))
+                return false;
+        }
+
         for (int i = 0; i < sorted.Count; i++)
         {
             int handIndex = sorted[i];
@@ -69,8 +100,34 @@ public static class AuthoritativeBattleEngine
             side.Hand.RemoveAt(handIndex);
             side.PlayedThisPhase.Insert(0, card);
         }
+
         return true;
     }
+
+    private static bool SideHasFaceUpChaShiPassive(AuthoritativeSideState side, ISkillRuleLookup? rules)
+    {
+        if (rules == null)
+            return false;
+
+        for (int gi = 0; gi < side.GeneralCardIds.Count; gi++)
+        {
+            if (gi >= side.GeneralFaceUp.Count || !side.GeneralFaceUp[gi])
+                continue;
+
+            string cid = side.GeneralCardIds[gi] ?? string.Empty;
+            for (int sk = 0; sk < 3; sk++)
+            {
+                SkillRuleDefinition? rule = rules.GetRule(cid, sk);
+                if (rule != null && string.Equals(rule.EffectId, AuthoritativePokerPatternRules.PassiveChaShiJqkEffectId, StringComparison.Ordinal))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HandCardRequiresChaShiChoice(AuthoritativePokerCard card, AuthoritativeSideState side, ISkillRuleLookup? rules) =>
+        card.Rank is >= 11 and <= 13 && SideHasFaceUpChaShiPassive(side, rules);
 
     public static bool TryTakeBackPlayedCard(AuthoritativeBattleState state, int seatIndex, int playedIndex)
     {
@@ -81,6 +138,7 @@ public static class AuthoritativeBattleEngine
             return false;
         var card = side.PlayedThisPhase[playedIndex];
         side.PlayedThisPhase.RemoveAt(playedIndex);
+        card.ChaShiCourtPlayedAsTen = false;
         side.Hand.Add(card);
         return true;
     }
@@ -215,7 +273,7 @@ public static class AuthoritativeBattleEngine
                 }
                 else
                 {
-                    FinishPlayPhase(state);
+                    FinishPlayPhase(state, skillRules);
                 }
                 break;
             case DuelPhaseName.Defense:
@@ -224,11 +282,12 @@ public static class AuthoritativeBattleEngine
             case DuelPhaseName.Resolve:
                 ResolveDamage(state);
                 ApplyPostResolveEffects(state);
-                FinishPlayPhase(state);
+                FinishPlayPhase(state, skillRules);
                 break;
             case DuelPhaseName.Discard:
                 RunDiscard(state);
                 LiuBeiSkillHooks.OnDiscardPhaseEndRenZheWuDi(state, skillRules);
+                HandEmptyTriggerHooks.TryResolveAfterHandBecameZero(state, state.ActiveSeatIndex, skillRules);
                 EndTurn(state);
                 break;
             case DuelPhaseName.TurnEnd:
@@ -290,6 +349,7 @@ public static class AuthoritativeBattleEngine
             Suit = card.Suit,
             Rank = card.Rank,
             DisplayName = card.DisplayName,
+            ChaShiCourtPlayedAsTen = card.ChaShiCourtPlayedAsTen,
         };
     }
 
@@ -363,7 +423,7 @@ public static class AuthoritativeBattleEngine
             side.Morale = Math.Min(side.MoraleCap, side.Morale + 1);
     }
 
-    private static void FinishPlayPhase(AuthoritativeBattleState state)
+    private static void FinishPlayPhase(AuthoritativeBattleState state, ISkillRuleLookup? skillRules)
     {
         foreach (var card in state.ActiveSide.PlayedThisPhase)
             state.ActiveSide.DiscardPile.Add(card);
@@ -386,6 +446,8 @@ public static class AuthoritativeBattleEngine
             state.Phase = DuelPhaseName.Main;
         else
             state.Phase = DuelPhaseName.Discard;
+
+        HandEmptyTriggerHooks.TryResolveAfterHandBecameZero(state, state.ActiveSeatIndex, skillRules);
     }
 
     private static void ResolveDamage(AuthoritativeBattleState state)

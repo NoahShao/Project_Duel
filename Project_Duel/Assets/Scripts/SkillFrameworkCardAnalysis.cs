@@ -27,7 +27,7 @@ namespace JunzhenDuijue
         {
             _ = state;
             _ = sideIsPlayer;
-            return PokerPatternRules.GetComparisonPoint(card);
+            return PokerPatternRules.GetRankForAttackThreshold(card);
         }
 
         public static PlayedHandShape Analyze(BattleState state, bool sideIsPlayer, List<PokerCard> cards)

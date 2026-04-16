@@ -1,3 +1,30 @@
 {
-  "Definitions": []
+  "Definitions": [
+    {
+      "SkillKey": "NO005_0",
+      "DisplayName": "\u8fdc\u77e2\u8fde\u73e0",
+      "AttackPatterns": [
+        {
+          "Kind": 1,
+          "MinEffectiveRankExclusive": 9,
+          "MaxEffectiveRankExclusive": 0,
+          "ExcludeFaceCourtWithoutChaShiTen": true,
+          "BaseDamage": 2,
+          "Unblockable": true,
+          "DamageCategory": 2,
+          "DamageElement": 0
+        },
+        {
+          "Kind": 1,
+          "MinEffectiveRankExclusive": 6,
+          "MaxEffectiveRankExclusive": 10,
+          "ExcludeFaceCourtWithoutChaShiTen": true,
+          "BaseDamage": 1,
+          "Unblockable": true,
+          "DamageCategory": 2,
+          "DamageElement": 0
+        }
+      ]
+    }
+  ]
 }

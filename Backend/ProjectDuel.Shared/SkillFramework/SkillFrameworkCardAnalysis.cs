@@ -23,38 +23,10 @@ public static class SkillFrameworkCardAnalysis
         public bool IsFourOfAKind { get; init; }
     }
 
-    public static int GetEffectiveRank(AuthoritativeBattleState state, int attackerSeatIndex, AuthoritativePokerCard card)
-    {
-        int rank = card.Rank;
-        if (rank is >= 11 and <= 13 && HasFaceUpSkillKey(state, attackerSeatIndex, "NO004_0"))
-            return 10;
-        return rank;
-    }
-
-    private static bool HasFaceUpSkillKey(AuthoritativeBattleState state, int seatIndex, string skillKey)
-    {
-        if (state == null || string.IsNullOrWhiteSpace(skillKey) || seatIndex < 0 || seatIndex >= state.Sides.Length)
-            return false;
-
-        var side = state.Sides[seatIndex];
-        for (int generalIndex = 0; generalIndex < side.GeneralCardIds.Count; generalIndex++)
-        {
-            if (generalIndex >= side.GeneralFaceUp.Count || !side.GeneralFaceUp[generalIndex])
-                continue;
-
-            string cardId = side.GeneralCardIds[generalIndex] ?? string.Empty;
-            for (int skillIndex = 0; skillIndex < 3; skillIndex++)
-            {
-                if (string.Equals($"{cardId}_{skillIndex}", skillKey, StringComparison.Ordinal))
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
     public static PlayedHandShape Analyze(AuthoritativeBattleState state, int attackerSeatIndex, IReadOnlyList<AuthoritativePokerCard> cards)
     {
+        _ = state;
+        _ = attackerSeatIndex;
         if (cards == null || cards.Count == 0)
             return new PlayedHandShape();
 
@@ -69,10 +41,10 @@ public static class SkillFrameworkCardAnalysis
                 allBlack = false;
         }
 
-        shape = shape with { AllRed = allRed, AllBlack = allBlack, IsFlush = IsFlush(cards) };
+        shape = shape with { AllRed = allRed, AllBlack = allBlack, IsFlush = AuthoritativePokerPatternRules.IsFlush(cards) };
 
-        var ranks = cards.Select(c => GetEffectiveRank(state, attackerSeatIndex, c)).ToList();
-        int straightLen = ComputeStraightLength(ranks, cards.Count);
+        var ranks = cards.Select(AuthoritativePokerPatternRules.GetComparisonPoint).ToList();
+        int straightLen = cards.Count >= 2 && AuthoritativePokerPatternRules.IsFlexibleStraight(cards, cards.Count) ? cards.Count : 0;
         int pairGroups = CountPairGroups(ranks);
         int maxSame = ranks.GroupBy(r => r).Select(g => g.Count()).DefaultIfEmpty(0).Max();
 
@@ -84,30 +56,16 @@ public static class SkillFrameworkCardAnalysis
             IsPair = cards.Count == 2 && maxSame == 2,
             IsTriple = cards.Count == 3 && maxSame == 3,
             IsFourOfAKind = cards.Count == 4 && maxSame == 4,
-            IsTwoPair = cards.Count == 4 && pairGroups == 2,
+            IsTwoPair = cards.Count == 4 && AuthoritativePokerPatternRules.IsTwoPairCompositeFour(cards),
         };
 
         if (cards.Count == 5)
         {
             var groupSizes = ranks.GroupBy(r => r).Select(g => g.Count()).OrderByDescending(c => c).ToList();
-            shape = shape with { IsFullHouse = groupSizes.Count == 2 && groupSizes[0] == 3 && groupSizes[1] == 2 };
+            shape = shape with { IsFullHouse = AuthoritativePokerPatternRules.IsFullHouseCompositeFive(cards) };
         }
 
         return shape;
-    }
-
-    private static int ComputeStraightLength(List<int> effectiveRanks, int cardCount)
-    {
-        var distinct = effectiveRanks.Distinct().OrderBy(r => r).ToList();
-        if (distinct.Count != cardCount || cardCount == 0)
-            return 0;
-        for (int i = 1; i < distinct.Count; i++)
-        {
-            if (distinct[i] != distinct[i - 1] + 1)
-                return 0;
-        }
-
-        return distinct.Count;
     }
 
     private static int CountPairGroups(List<int> effectiveRanks)
@@ -120,18 +78,6 @@ public static class SkillFrameworkCardAnalysis
         }
 
         return n;
-    }
-
-    private static bool IsFlush(IReadOnlyList<AuthoritativePokerCard> cards)
-    {
-        string first = cards[0].Suit ?? string.Empty;
-        for (int i = 1; i < cards.Count; i++)
-        {
-            if (!string.Equals(cards[i].Suit ?? string.Empty, first, StringComparison.Ordinal))
-                return false;
-        }
-
-        return true;
     }
 
     private static bool IsRedSuit(AuthoritativePokerCard c)

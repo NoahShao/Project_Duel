@@ -182,10 +182,21 @@ public static class SkillFrameworkExecutor
             case AttackPatternKind.SingleCard:
                 if (shape.CardCount != 1)
                     return false;
+                if (row.ExcludeFaceCourtWithoutChaShiTen &&
+                    cards[0].Rank is >= 11 and <= 13 &&
+                    !cards[0].ChaShiCourtPlayedAsTen)
+                    return false;
                 if (row.MinEffectiveRankExclusive > 0)
                 {
-                    int r = SkillFrameworkCardAnalysis.GetEffectiveRank(state, attackerSeat, cards[0]);
+                    int r = AuthoritativePokerPatternRules.GetRankForAttackThreshold(cards[0]);
                     if (r <= row.MinEffectiveRankExclusive)
+                        return false;
+                }
+
+                if (row.MaxEffectiveRankExclusive > 0)
+                {
+                    int rMax = AuthoritativePokerPatternRules.GetRankForAttackThreshold(cards[0]);
+                    if (rMax >= row.MaxEffectiveRankExclusive)
                         return false;
                 }
 

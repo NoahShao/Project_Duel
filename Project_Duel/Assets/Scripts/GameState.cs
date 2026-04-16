@@ -14,6 +14,8 @@ namespace JunzhenDuijue
         public int GeneralSlotIndex;
         /// <summary>打出区展示用角色名（可选）。</summary>
         public string PlayedRoleDisplayName;
+        /// <summary>【察势】非角色 J/Q/K 是否按 10 点参与牌型（默认 false）。</summary>
+        public bool ChaShiCourtPlayedAsTen;
 
         public string DisplayName
         {
@@ -297,6 +299,8 @@ namespace JunzhenDuijue
         public bool PlayPhaseStartInitialized;
         public bool DefenseBuffStepDone;
         public bool DefenseSkillLocked;
+        /// <summary>【虎步关右】本次攻击宣言节点是否已询问过（每节点至多一次，防止重复弹窗）。</summary>
+        public bool HuBuGuanYouWindowConsumedForCurrentAttack;
 
         /// <summary>已结算「游戏开始时」士气上限/恢复类技能（<c>start_game_gain_morale_and_max</c>），用于与点击触发顺序一致。</summary>
         public readonly HashSet<(bool sideIsPlayer, int generalIndex, int skillIndex)> AppliedGameStartMoraleEffects =
@@ -343,6 +347,7 @@ namespace JunzhenDuijue
             PendingCombatNote = string.Empty;
             DefenseBuffStepDone = false;
             DefenseSkillLocked = false;
+            HuBuGuanYouWindowConsumedForCurrentAttack = false;
         }
 
         public void FinishCurrentPlayPhaseCombat()
