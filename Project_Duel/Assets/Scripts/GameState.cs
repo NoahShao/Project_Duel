@@ -301,8 +301,15 @@ namespace JunzhenDuijue
         public bool PlayPhaseStartInitialized;
         public bool DefenseBuffStepDone;
         public bool DefenseSkillLocked;
+        /// <summary>【八门金锁】已从牌库顶翻出、待察势或待入弃牌/手牌的牌（不在 Deck/Hand/Discard 中）。</summary>
+        public PokerCard PendingDefenseBamenReveal;
+        /// <summary>本回合已消耗一层「抵御」：下一次结算攻击伤害时，在防御减免后再将伤害减半（向上取整减免量）。</summary>
+        public bool PendingHalveIncomingDamageWithResist;
         /// <summary>【虎步关右】本次攻击宣言节点是否已询问过（每节点至多一次，防止重复弹窗）。</summary>
         public bool HuBuGuanYouWindowConsumedForCurrentAttack;
+
+        /// <summary>本弃牌阶段是否已在「弃牌阶段开始」或结束时结算过【仁者无敌】摸牌展示效果（避免开始发动后结束再结算一次）。</summary>
+        public bool RenZheWuDiHandledThisDiscardPhase;
 
         /// <summary>已结算「游戏开始时」士气上限/恢复类技能（<c>start_game_gain_morale_and_max</c>），用于与点击触发顺序一致。</summary>
         public readonly HashSet<(bool sideIsPlayer, int generalIndex, int skillIndex)> AppliedGameStartMoraleEffects =
@@ -350,6 +357,8 @@ namespace JunzhenDuijue
             PendingCombatNote = string.Empty;
             DefenseBuffStepDone = false;
             DefenseSkillLocked = false;
+            PendingDefenseBamenReveal = null;
+            PendingHalveIncomingDamageWithResist = false;
             HuBuGuanYouWindowConsumedForCurrentAttack = false;
         }
 
@@ -432,6 +441,27 @@ namespace JunzhenDuijue
             }
 
             return actual;
+        }
+
+        /// <summary>从牌库顶翻开并移出一张牌（牌库空时尝试洗入弃牌堆）；用于【八门金锁】等展示，不加入手牌。</summary>
+        public static bool TryPopTopDeckCardForReveal(SideState side, out PokerCard card)
+        {
+            card = default;
+            if (side == null)
+                return false;
+            if (side.Deck.Count == 0)
+            {
+                if (side.DiscardPile.Count == 0)
+                    return false;
+                ReshuffleDiscardIntoDeck(side);
+            }
+
+            if (side.Deck.Count == 0)
+                return false;
+            int last = side.Deck.Count - 1;
+            card = side.Deck[last];
+            side.Deck.RemoveAt(last);
+            return true;
         }
 
         private static void ReshuffleDiscardIntoDeck(SideState side)

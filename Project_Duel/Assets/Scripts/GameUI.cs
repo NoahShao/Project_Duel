@@ -104,10 +104,15 @@ namespace JunzhenDuijue
         private static RectTransform _playerHandLabelRt;
         private static RectTransform _playerHandFrameRt;
         private static RectTransform _playerHandViewportRt;
+        private static RectTransform _opponentHandFrameRt;
         private static GameObject _playerHandSortButtonGo;
         private static bool _playerHandExpanded;
         private static GameObject _playerHandOutsideDismissOverlayGo;
         private static RightMouseScrollRect _playerHandRightMouseScroll;
+        private static RectTransform _playerIndicatorStripOuterRt;
+        private static RectTransform _playerIndicatorStripContentRt;
+        private static RectTransform _opponentIndicatorStripOuterRt;
+        private static RectTransform _opponentIndicatorStripContentRt;
         private const float HandDockMargin = 24f;
         private const float CompactHandW = 420f;
         private const float CompactHandH = 160f;
@@ -332,6 +337,129 @@ namespace JunzhenDuijue
             CheckImmediateGameOverAfterHpChange();
         }
 
+        /// <summary>
+        /// 对受害方造成生命伤害（非攻击技结算路径等）；若受害方有「抵御」且为离线，则在扣血前询问（己方）或 AI 判定（敌方）。
+        /// </summary>
+        public static void ApplyHpDamageWithOptionalResist(bool victimIsPlayer, int amount, System.Action<int> onAppliedWithFinalDamage = null)
+        {
+            if (_state == null || amount <= 0 || _battleMatchEnded)
+            {
+                onAppliedWithFinalDamage?.Invoke(0);
+                return;
+            }
+
+            if (_isOnlineMode || !OfflineSkillEngine.HasRemovableDefenseBuff(_state, victimIsPlayer))
+            {
+                if (victimIsPlayer)
+                    ApplyDamageToPlayer(amount);
+                else
+                    ApplyDamageToOpponent(amount);
+                CheckImmediateGameOverAfterHpChange();
+                onAppliedWithFinalDamage?.Invoke(amount);
+                return;
+            }
+
+            if (!victimIsPlayer)
+            {
+                int amt = amount;
+                OfflineSkillEngine.MaybeAutoConsumeResistForDirectDamage(_state, false, ref amt);
+                ApplyDamageToOpponent(amt);
+                CheckImmediateGameOverAfterHpChange();
+                onAppliedWithFinalDamage?.Invoke(amt);
+                return;
+            }
+
+            BeginDirectDamageResistOffer(amount, finalAmt =>
+            {
+                ApplyDamageToPlayer(finalAmt);
+                CheckImmediateGameOverAfterHpChange();
+                onAppliedWithFinalDamage?.Invoke(finalAmt);
+            });
+        }
+
+        private static GameObject _directDamageResistRoot;
+        private static float _directDamageResistPrevTimeScale = 1f;
+        private static System.Action<int> _directDamageResistOnApplied;
+
+        private static void BeginDirectDamageResistOffer(int rawAmount, System.Action<int> onAppliedWithFinalDamage)
+        {
+            if (_root == null || _state == null)
+            {
+                onAppliedWithFinalDamage?.Invoke(rawAmount);
+                return;
+            }
+
+            TearDownDirectDamageResistPopup();
+            _directDamageResistOnApplied = onAppliedWithFinalDamage;
+            _directDamageResistPrevTimeScale = Time.timeScale;
+            Time.timeScale = 0f;
+
+            var root = new GameObject("DirectDamageResistOffer");
+            root.transform.SetParent(_root.transform, false);
+            _directDamageResistRoot = root;
+            var rootRt = root.AddComponent<RectTransform>();
+            SetFullRect(rootRt);
+            var rootCanvas = root.AddComponent<Canvas>();
+            rootCanvas.overrideSorting = true;
+            rootCanvas.sortingOrder = 72;
+            root.AddComponent<GraphicRaycaster>();
+            var overlay = new GameObject("Overlay");
+            overlay.transform.SetParent(root.transform, false);
+            SetFullRect(overlay.AddComponent<RectTransform>());
+            overlay.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
+
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(root.transform, false);
+            var pr = panel.AddComponent<RectTransform>();
+            pr.anchorMin = pr.anchorMax = new Vector2(0.5f, 0.5f);
+            pr.sizeDelta = new Vector2(480f, 220f);
+            panel.AddComponent<Image>().color = new Color(0.32f, 0.34f, 0.4f, 0.98f);
+            string title = "\u5373\u5c06\u53d7\u5230" + rawAmount + "\u70b9\u4f24\u5bb3\u3002\u662f\u5426\u6d88\u80171\u5c42\u300c\u62b5\u5fa1\u300d\uff0c\u4f7f\u672c\u6b21\u53d7\u5230\u7684\u4f24\u5bb3\u51cf\u534a\uff08\u51cf\u514d\u91cf\u5411\u4e0a\u53d6\u6574\uff09\uff1f";
+            var titleTxt = CreateGameText(panel.transform, title, 18, TextAlignmentOptions.Center);
+            if (titleTxt != null)
+            {
+                var tr = titleTxt.GetComponent<RectTransform>();
+                tr.anchorMin = new Vector2(0.06f, 0.48f);
+                tr.anchorMax = new Vector2(0.94f, 0.9f);
+                tr.offsetMin = tr.offsetMax = Vector2.zero;
+            }
+
+            void Finish(int finalDamage)
+            {
+                Time.timeScale = _directDamageResistPrevTimeScale <= 0f ? 1f : _directDamageResistPrevTimeScale;
+                var cb = _directDamageResistOnApplied;
+                _directDamageResistOnApplied = null;
+                TearDownDirectDamageResistPopup();
+                cb?.Invoke(finalDamage);
+            }
+
+            void OnYes()
+            {
+                int f = OfflineSkillEngine.ApplyOneResistHalvingToDamageAmount(_state, true, rawAmount);
+                if (f != rawAmount)
+                    BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(_state.IsPlayerTurn) + "\u4f24\u5bb3\u7ed3\u7b97\u524d\uff0c\u5df1\u65b9\u79fb\u96641\u5c42\u300c\u62b5\u5fa1\u300d\uff0c\u4f24\u5bb3\u7531" + rawAmount + "\u53d8\u4e3a" + f + "\u3002");
+                Finish(f);
+            }
+
+            void OnNo()
+            {
+                Finish(rawAmount);
+            }
+
+            CreateJuShouPopupButton(panel.transform, new Vector2(-100f, -72f), "\u4f7f\u7528", new Color(0.22f, 0.52f, 0.38f, 1f), OnYes);
+            CreateJuShouPopupButton(panel.transform, new Vector2(100f, -72f), "\u4e0d\u4f7f\u7528", new Color(0.42f, 0.42f, 0.46f, 1f), OnNo);
+            root.transform.SetAsLastSibling();
+        }
+
+        private static void TearDownDirectDamageResistPopup()
+        {
+            if (_directDamageResistRoot != null)
+            {
+                UnityEngine.Object.Destroy(_directDamageResistRoot);
+                _directDamageResistRoot = null;
+            }
+        }
+
         /// <summary>任意路径修改生命后调用：生命≤0 时立刻结束对局并弹出结果。</summary>
         public static void CheckImmediateGameOverAfterHpChange()
         {
@@ -461,6 +589,9 @@ namespace JunzhenDuijue
             _nonAttackDamageTargetPickOnComplete = null;
             CloseHandEmptyOrderPopup();
             CloseSkillReadonlyInfoPopup();
+            TearDownJuShouOfferPopup();
+            TearDownDiscardStartRenZheWuDiOfferPopup();
+            TearDownDirectDamageResistPopup();
             _battleMatchEnded = false;
             ToastUI.CancelAllToastsImmediate();
             _gameStartMandatoryPending = null;
@@ -764,6 +895,37 @@ namespace JunzhenDuijue
                 || IsGameStartOptionalPendingFor(isPlayerSide, generalIndex, skillIndex);
         }
 
+        /// <summary>
+        /// 玩家为防御方且处于防御阶段 Main 时，除已锁定的防御技外是否仍有可点的技能（当前即开局同节点的强制/自选技）。
+        /// 用于宣告防御技后是否自动「结束防御」：有则保留让玩家再操作。
+        /// </summary>
+        public static bool PlayerHasOtherUsableSkillsInDefensePhaseMain()
+        {
+            if (_state == null)
+                return false;
+            if (_state.CurrentPhase != BattlePhase.Defense || _state.CurrentPhaseStep != PhaseStep.Main)
+                return false;
+            if (_state.IsPlayerTurn)
+                return false;
+
+            var side = _state.Player;
+            for (int cardIndex = 0; cardIndex < side.GeneralCardIds.Count; cardIndex++)
+            {
+                var data = CardTableLoader.GetCard(CardTableLoader.CardIdToNumber(side.GeneralCardIds[cardIndex]));
+                bool isFaceUp = side.IsGeneralFaceUp(cardIndex);
+                for (int skillIndex = 0; skillIndex < 3; skillIndex++)
+                {
+                    bool allowSkillWhileFlipped = isFaceUp || (data != null && SkillHasTag(data, skillIndex, "\u6301\u7eed\u6280"));
+                    if (IsGameStartMandatoryPendingFor(true, cardIndex, skillIndex) && allowSkillWhileFlipped)
+                        return true;
+                    if (IsGameStartOptionalPendingFor(true, cardIndex, skillIndex) && allowSkillWhileFlipped)
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
         private static void RefreshEndPassiveNodeButtonVisibility()
         {
             bool show = (_gameStartMandatoryPending != null && _gameStartMandatoryPending.Count > 0)
@@ -1043,6 +1205,8 @@ namespace JunzhenDuijue
             dockGo.transform.SetParent(_root.transform, false);
             _playerHandDockRt = dockGo.AddComponent<RectTransform>();
 
+            BuildPlayerHandIndicatorStripUnderDock(dockGo.transform);
+
             var playerLabelGo = new GameObject("PlayerHandLabel");
             playerLabelGo.transform.SetParent(dockGo.transform, false);
             var plr = playerLabelGo.AddComponent<RectTransform>();
@@ -1133,6 +1297,7 @@ namespace JunzhenDuijue
             var oppFrame = new GameObject("OpponentHandFrame");
             oppFrame.transform.SetParent(_root.transform, false);
             var or = oppFrame.AddComponent<RectTransform>();
+            _opponentHandFrameRt = or;
             or.anchorMin = new Vector2(1f, 1f);
             or.anchorMax = new Vector2(1f, 1f);
             or.pivot = new Vector2(1f, 1f);
@@ -1162,6 +1327,8 @@ namespace JunzhenDuijue
             oppCg.interactable = false;
             oppCg.blocksRaycasts = true;
             _opponentHandContent = oppContent.transform;
+
+            BuildOpponentHandIndicatorStrip(margin, handW);
 
             var hoverOverlay = new GameObject("HandHoverOverlay");
             hoverOverlay.transform.SetParent(_root.transform, false);
@@ -1227,6 +1394,575 @@ namespace JunzhenDuijue
             }
         }
 
+        private static void BuildPlayerHandIndicatorStripUnderDock(Transform dockParent)
+        {
+            var strip = new GameObject("PlayerIndicatorStrip");
+            strip.transform.SetParent(dockParent, false);
+            strip.transform.SetAsFirstSibling();
+            _playerIndicatorStripOuterRt = strip.AddComponent<RectTransform>();
+            _playerIndicatorStripOuterRt.anchorMin = new Vector2(0f, 1f);
+            _playerIndicatorStripOuterRt.anchorMax = new Vector2(1f, 1f);
+            _playerIndicatorStripOuterRt.pivot = new Vector2(0.5f, 1f);
+            var bg = strip.AddComponent<Image>();
+            bg.color = new Color(0.14f, 0.16f, 0.2f, 0.55f);
+            bg.raycastTarget = false;
+            var content = new GameObject("IndicatorContent");
+            content.transform.SetParent(strip.transform, false);
+            _playerIndicatorStripContentRt = content.AddComponent<RectTransform>();
+            _playerIndicatorStripContentRt.anchorMin = Vector2.zero;
+            _playerIndicatorStripContentRt.anchorMax = Vector2.one;
+            _playerIndicatorStripContentRt.offsetMin = new Vector2(4f, 2f);
+            _playerIndicatorStripContentRt.offsetMax = new Vector2(-4f, -2f);
+            strip.SetActive(false);
+        }
+
+        private static void BuildOpponentHandIndicatorStrip(float margin, float handW)
+        {
+            var go = new GameObject("OpponentIndicatorStrip");
+            go.transform.SetParent(_root.transform, false);
+            _opponentIndicatorStripOuterRt = go.AddComponent<RectTransform>();
+            _opponentIndicatorStripOuterRt.anchorMin = _opponentIndicatorStripOuterRt.anchorMax = new Vector2(1f, 1f);
+            _opponentIndicatorStripOuterRt.pivot = new Vector2(1f, 1f);
+            _opponentIndicatorStripOuterRt.sizeDelta = new Vector2(handW, 32f);
+            var img = go.AddComponent<Image>();
+            img.color = new Color(0.14f, 0.16f, 0.2f, 0.45f);
+            img.raycastTarget = false;
+            var content = new GameObject("IndicatorContent");
+            content.transform.SetParent(go.transform, false);
+            _opponentIndicatorStripContentRt = content.AddComponent<RectTransform>();
+            SetFullRect(_opponentIndicatorStripContentRt);
+            _opponentIndicatorStripContentRt.offsetMin = new Vector2(4f, 2f);
+            _opponentIndicatorStripContentRt.offsetMax = new Vector2(-4f, -2f);
+            go.SetActive(false);
+        }
+
+        private static float ComputePlayerIndicatorStripOuterHeight()
+        {
+            if (_playerIndicatorStripOuterRt == null || _state == null)
+                return 0f;
+            int n = BattleIndicatorStrip.ListIndicatorEntries(_state.Player).Count;
+            if (n <= 0)
+                return 0f;
+            return BattleIndicatorStrip.ComputeStripHeight(n) + 8f;
+        }
+
+        private static void RefreshBattleIndicatorStripUi()
+        {
+            if (_state == null)
+                return;
+            RebuildPlayerHandIndicatorCells();
+            RebuildOpponentHandIndicatorCells();
+            ApplyPlayerHandDockLayout(_playerHandExpanded);
+            if (_opponentHandFrameRt != null && _opponentIndicatorStripOuterRt != null)
+            {
+                int no = BattleIndicatorStrip.ListIndicatorEntries(_state.Opponent).Count;
+                float oh = no > 0 ? BattleIndicatorStrip.ComputeStripHeight(no) + 8f : 0f;
+                _opponentIndicatorStripOuterRt.gameObject.SetActive(oh > 0.5f);
+                Vector2 p = _opponentHandFrameRt.anchoredPosition;
+                _opponentIndicatorStripOuterRt.anchoredPosition = new Vector2(p.x, p.y + oh + 4f);
+                _opponentIndicatorStripOuterRt.sizeDelta = new Vector2(_opponentHandFrameRt.sizeDelta.x, Mathf.Max(oh, 8f));
+            }
+        }
+
+        private static void RebuildPlayerHandIndicatorCells()
+        {
+            if (_playerIndicatorStripContentRt == null || _state == null)
+                return;
+            for (int i = _playerIndicatorStripContentRt.childCount - 1; i >= 0; i--)
+                UnityEngine.Object.Destroy(_playerIndicatorStripContentRt.GetChild(i).gameObject);
+
+            var entries = BattleIndicatorStrip.ListIndicatorEntries(_state.Player);
+            float w = Mathf.Max(_playerIndicatorStripContentRt.rect.width, CompactHandW - 24f);
+            float cellW = (w - BattleIndicatorStrip.CellPadX) / BattleIndicatorStrip.MaxCellsPerRow;
+            bool resistClick = !_isOnlineMode && _state.CurrentPhase == BattlePhase.Defense && _state.CurrentPhaseStep == PhaseStep.Main &&
+                               !_state.IsPlayerTurn && !_state.DefenseSkillLocked &&
+                               OfflineSkillEngine.HasRemovableDefenseBuff(_state, true) && !IsPlayerNonPassiveInputBlocked();
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                (string key, int count) = entries[i];
+                int rowFromBottom = i / BattleIndicatorStrip.MaxCellsPerRow;
+                int colFromRight = i % BattleIndicatorStrip.MaxCellsPerRow;
+                int colLeft = BattleIndicatorStrip.MaxCellsPerRow - 1 - colFromRight;
+                float xMin = colLeft * cellW + BattleIndicatorStrip.CellPadX * 0.5f;
+                float yBottom = rowFromBottom * (BattleIndicatorStrip.CellHeight + BattleIndicatorStrip.CellPadY);
+
+                var cellGo = new GameObject("Ind_" + i);
+                cellGo.transform.SetParent(_playerIndicatorStripContentRt, false);
+                var rt = cellGo.AddComponent<RectTransform>();
+                rt.anchorMin = new Vector2(0f, 0f);
+                rt.anchorMax = new Vector2(0f, 0f);
+                rt.pivot = new Vector2(0f, 0f);
+                rt.anchoredPosition = new Vector2(xMin, yBottom);
+                rt.sizeDelta = new Vector2(cellW - BattleIndicatorStrip.CellPadX, BattleIndicatorStrip.CellHeight);
+
+                bool isResist = string.Equals(key, OfflineSkillEngine.ResistEffectKey, StringComparison.Ordinal);
+                string label = "\u3010" + BattleIndicatorStrip.DisplayNameForEffectKey(key) + "\u3011\uff1a" + count;
+
+                if (isResist && resistClick)
+                {
+                    var img = cellGo.AddComponent<Image>();
+                    img.color = new Color(0.22f, 0.38f, 0.55f, 0.92f);
+                    img.raycastTarget = true;
+                    var btn = cellGo.AddComponent<Button>();
+                    btn.targetGraphic = img;
+                    btn.onClick.AddListener(OnPlayerIndicatorResistClicked);
+                    var txt = CreateGameText(cellGo.transform, label, 14);
+                    if (txt != null)
+                    {
+                        txt.color = Color.white;
+                        txt.raycastTarget = false;
+                        SetFullRect(txt.GetComponent<RectTransform>());
+                    }
+
+                    var h = cellGo.AddComponent<IndicatorEffectHoverCell>();
+                    h.IntroLookupId = BattleIndicatorStrip.IntroLookupIdForEffectKey(key);
+                }
+                else
+                {
+                    var img = cellGo.AddComponent<Image>();
+                    img.color = new Color(0.28f, 0.3f, 0.34f, 0.88f);
+                    img.raycastTarget = true;
+                    var txt = CreateGameText(cellGo.transform, label, 14);
+                    if (txt != null)
+                    {
+                        txt.color = new Color(0.92f, 0.92f, 0.94f, 1f);
+                        txt.raycastTarget = false;
+                        SetFullRect(txt.GetComponent<RectTransform>());
+                    }
+
+                    var h = cellGo.AddComponent<IndicatorEffectHoverCell>();
+                    h.IntroLookupId = BattleIndicatorStrip.IntroLookupIdForEffectKey(key);
+                }
+            }
+
+            int rows = entries.Count > 0 ? (entries.Count + BattleIndicatorStrip.MaxCellsPerRow - 1) / BattleIndicatorStrip.MaxCellsPerRow : 0;
+            float contentH = rows > 0 ? rows * (BattleIndicatorStrip.CellHeight + BattleIndicatorStrip.CellPadY) + 4f : 0f;
+            _playerIndicatorStripContentRt.sizeDelta = new Vector2(w, contentH);
+        }
+
+        private static void RebuildOpponentHandIndicatorCells()
+        {
+            if (_opponentIndicatorStripContentRt == null || _state == null)
+                return;
+            for (int i = _opponentIndicatorStripContentRt.childCount - 1; i >= 0; i--)
+                UnityEngine.Object.Destroy(_opponentIndicatorStripContentRt.GetChild(i).gameObject);
+
+            var entries = BattleIndicatorStrip.ListIndicatorEntries(_state.Opponent);
+            float w = _opponentIndicatorStripContentRt.rect.width > 8f ? _opponentIndicatorStripContentRt.rect.width : CompactHandW - 16f;
+            float cellW = (w - BattleIndicatorStrip.CellPadX) / BattleIndicatorStrip.MaxCellsPerRow;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                (string key, int count) = entries[i];
+                int rowFromBottom = i / BattleIndicatorStrip.MaxCellsPerRow;
+                int colFromRight = i % BattleIndicatorStrip.MaxCellsPerRow;
+                int colLeft = BattleIndicatorStrip.MaxCellsPerRow - 1 - colFromRight;
+                float xMinPlayerLayout = colLeft * cellW + BattleIndicatorStrip.CellPadX * 0.5f;
+                float yBottom = rowFromBottom * (BattleIndicatorStrip.CellHeight + BattleIndicatorStrip.CellPadY);
+                float innerW = cellW - BattleIndicatorStrip.CellPadX;
+                float xLeftMirrored = w - BattleIndicatorStrip.CellPadX - xMinPlayerLayout - innerW;
+
+                var cellGo = new GameObject("OppInd_" + i);
+                cellGo.transform.SetParent(_opponentIndicatorStripContentRt, false);
+                var rt = cellGo.AddComponent<RectTransform>();
+                rt.anchorMin = new Vector2(0f, 0f);
+                rt.anchorMax = new Vector2(0f, 0f);
+                rt.pivot = new Vector2(0f, 0f);
+                rt.anchoredPosition = new Vector2(xLeftMirrored, yBottom);
+                rt.sizeDelta = new Vector2(innerW, BattleIndicatorStrip.CellHeight);
+                var img = cellGo.AddComponent<Image>();
+                img.color = new Color(0.28f, 0.3f, 0.34f, 0.88f);
+                img.raycastTarget = true;
+                string label = "\u3010" + BattleIndicatorStrip.DisplayNameForEffectKey(key) + "\u3011\uff1a" + count;
+                var txt = CreateGameText(cellGo.transform, label, 14);
+                if (txt != null)
+                {
+                    txt.color = new Color(0.92f, 0.92f, 0.94f, 1f);
+                    txt.raycastTarget = false;
+                    SetFullRect(txt.GetComponent<RectTransform>());
+                }
+
+                var h = cellGo.AddComponent<IndicatorEffectHoverCell>();
+                h.IntroLookupId = BattleIndicatorStrip.IntroLookupIdForEffectKey(key);
+            }
+
+            int rows = entries.Count > 0 ? (entries.Count + BattleIndicatorStrip.MaxCellsPerRow - 1) / BattleIndicatorStrip.MaxCellsPerRow : 0;
+            float contentH = rows > 0 ? rows * (BattleIndicatorStrip.CellHeight + BattleIndicatorStrip.CellPadY) + 4f : 0f;
+            _opponentIndicatorStripContentRt.sizeDelta = new Vector2(w, contentH);
+        }
+
+        private static void OnPlayerIndicatorResistClicked()
+        {
+            if (_state == null || IsBattleMatchEnded() || _isOnlineMode)
+                return;
+            if (IsPlayerNonPassiveInputBlocked())
+                return;
+            if (_state.CurrentPhase != BattlePhase.Defense || _state.CurrentPhaseStep != PhaseStep.Main || _state.IsPlayerTurn)
+            {
+                ToastUI.Show("\u4ec5\u5728\u4f60\u4e3a\u9632\u5fa1\u65b9\u4e14\u5c1a\u672a\u58f0\u660e\u9632\u5fa1\u6280\u65f6\u53ef\u4f7f\u7528\u300c\u62b5\u5fa1\u300d", 2.2f);
+                return;
+            }
+
+            if (_state.DefenseSkillLocked)
+            {
+                ToastUI.Show("\u5df2\u58f0\u660e\u9632\u5fa1\u6280\uff0c\u65e0\u6cd5\u518d\u4f7f\u7528\u300c\u62b5\u5fa1\u300d", 2.2f);
+                return;
+            }
+
+            if (!OfflineSkillEngine.HasRemovableDefenseBuff(_state, true))
+                return;
+            string msg = OfflineSkillEngine.ConsumeOneDefenseBuff(_state, true);
+            if (!string.IsNullOrEmpty(msg))
+            {
+                _state.PendingHalveIncomingDamageWithResist = true;
+                BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff0c\u5df1\u65b9" + msg + "\u3002");
+            }
+
+            RefreshAllFromState();
+        }
+
+        private static GameObject _juShouOfferRoot;
+        private static float _juShouOfferPrevTimeScale = 1f;
+        private static bool _juShouOfferIsPausingTime;
+        private static GameObject _discardStartRenZheWuDiRoot;
+        private static float _discardStartRenZheWuDiPrevTimeScale = 1f;
+        private static bool _discardStartRenZheIsPausingTime;
+        private static GameObject _battleIndicatorIntroTooltipRoot;
+        private static TextMeshProUGUI _battleIndicatorIntroTooltipText;
+
+        /// <summary>出牌阶段开始：据守等弹窗结束后再进入 Main（由 <see cref="BattlePhaseManager"/> 调用）。</summary>
+        public static void RunPlayPhaseStartPromptsThen(bool playPhaseOwnerIsPlayer, System.Action onAdvanceToMain)
+        {
+            if (_state == null || _battleMatchEnded)
+            {
+                onAdvanceToMain?.Invoke();
+                return;
+            }
+
+            if (_isOnlineMode)
+            {
+                if (!playPhaseOwnerIsPlayer && OfflineSkillEngine.CanOfferPlayPhaseStartResist(_state, false, out _, out _, out SkillRuleEntry ruleO))
+                {
+                    if (UnityEngine.Random.value < 0.38f)
+                    {
+                        string log = OfflineSkillEngine.ApplyPlayPhaseStartResist(_state, false, ruleO);
+                        if (!string.IsNullOrEmpty(log))
+                            BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(_state.IsPlayerTurn) + log + "\u3002");
+                    }
+                }
+
+                onAdvanceToMain?.Invoke();
+                return;
+            }
+
+            if (BattlePhaseManager.IsAwaitingGameStartSequence())
+            {
+                onAdvanceToMain?.Invoke();
+                return;
+            }
+
+            if (ToastUI.IsSkillBannerTimeFreezeActive())
+            {
+                onAdvanceToMain?.Invoke();
+                return;
+            }
+
+            if (!playPhaseOwnerIsPlayer && OfflineSkillEngine.CanOfferPlayPhaseStartResist(_state, false, out _, out _, out SkillRuleEntry ruleOpponent))
+            {
+                if (UnityEngine.Random.value < 0.38f)
+                {
+                    string log = OfflineSkillEngine.ApplyPlayPhaseStartResist(_state, false, ruleOpponent);
+                    if (!string.IsNullOrEmpty(log))
+                        BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(_state.IsPlayerTurn) + log + "\u3002");
+                }
+            }
+
+            RefreshAllFromState();
+            if (playPhaseOwnerIsPlayer && OfflineSkillEngine.CanOfferPlayPhaseStartResist(_state, true, out _, out _, out SkillRuleEntry ruleP))
+            {
+                OpenJuShouOfferPopup(ruleP, onAdvanceToMain);
+                return;
+            }
+
+            onAdvanceToMain?.Invoke();
+        }
+
+        /// <summary>弃牌阶段开始：离线己方【仁者无敌】询问后再进入弃牌 Main。</summary>
+        public static void RunDiscardPhaseStartPromptsThen(bool discardOwnerIsPlayer, System.Action onAdvanceToDiscardMain)
+        {
+            if (_state == null || _battleMatchEnded)
+            {
+                onAdvanceToDiscardMain?.Invoke();
+                return;
+            }
+
+            if (_isOnlineMode || !discardOwnerIsPlayer || !OfflineSkillEngine.CanOfferRenZheWuDiDiscard(_state, discardOwnerIsPlayer))
+            {
+                onAdvanceToDiscardMain?.Invoke();
+                return;
+            }
+
+            if (BattlePhaseManager.IsAwaitingGameStartSequence() || ToastUI.IsSkillBannerTimeFreezeActive())
+            {
+                onAdvanceToDiscardMain?.Invoke();
+                return;
+            }
+
+            OpenDiscardStartRenZheWuDiOfferPopup(onAdvanceToDiscardMain, discardOwnerIsPlayer);
+        }
+
+        private static void OpenJuShouOfferPopup(SkillRuleEntry rule, System.Action onClosed)
+        {
+            if (_root == null || rule == null)
+            {
+                onClosed?.Invoke();
+                return;
+            }
+
+            TearDownJuShouOfferPopup();
+            _juShouOfferIsPausingTime = true;
+            _juShouOfferPrevTimeScale = Time.timeScale;
+            Time.timeScale = 0f;
+            _juShouOfferRoot = new GameObject("JuShouOffer");
+            _juShouOfferRoot.transform.SetParent(_root.transform, false);
+            var rootRt = _juShouOfferRoot.AddComponent<RectTransform>();
+            SetFullRect(rootRt);
+            var cvs = _juShouOfferRoot.AddComponent<Canvas>();
+            cvs.overrideSorting = true;
+            cvs.sortingOrder = 71;
+            _juShouOfferRoot.AddComponent<GraphicRaycaster>();
+            var overlay = new GameObject("Overlay");
+            overlay.transform.SetParent(_juShouOfferRoot.transform, false);
+            SetFullRect(overlay.AddComponent<RectTransform>());
+            overlay.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(_juShouOfferRoot.transform, false);
+            var pr = panel.AddComponent<RectTransform>();
+            pr.anchorMin = pr.anchorMax = new Vector2(0.5f, 0.5f);
+            pr.sizeDelta = new Vector2(460f, 220f);
+            panel.AddComponent<Image>().color = new Color(0.32f, 0.34f, 0.4f, 0.98f);
+            int cost = Mathf.Max(1, rule.Value1);
+            string title = "\u3010\u636e\u5b88\u3011\uff1a\u662f\u5426\u6d88\u8017" + cost + "\u70b9\u58eb\u6c14\u83b7\u5f971\u5c42\u300c\u62b5\u5fa1\u300d\uff1f";
+            var titleTxt = CreateGameText(panel.transform, title, 20, TextAlignmentOptions.Center);
+            if (titleTxt != null)
+            {
+                var tr = titleTxt.GetComponent<RectTransform>();
+                tr.anchorMin = new Vector2(0.1f, 0.55f);
+                tr.anchorMax = new Vector2(0.9f, 0.92f);
+                tr.offsetMin = tr.offsetMax = Vector2.zero;
+            }
+
+            void OnYes()
+            {
+                string log = OfflineSkillEngine.ApplyPlayPhaseStartResist(_state, true, rule);
+                TearDownJuShouOfferPopup();
+                if (!string.IsNullOrEmpty(log))
+                    BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(_state.IsPlayerTurn) + log + "\u3002");
+                RefreshAllFromState();
+                onClosed?.Invoke();
+            }
+
+            void OnNo()
+            {
+                TearDownJuShouOfferPopup();
+                RefreshAllFromState();
+                onClosed?.Invoke();
+            }
+
+            CreateJuShouPopupButton(panel.transform, new Vector2(-100f, -72f), "\u53d1\u52a8", new Color(0.22f, 0.52f, 0.38f, 1f), OnYes);
+            CreateJuShouPopupButton(panel.transform, new Vector2(100f, -72f), "\u53d6\u6d88", new Color(0.42f, 0.42f, 0.46f, 1f), OnNo);
+            _juShouOfferRoot.transform.SetAsLastSibling();
+        }
+
+        private static void CreateJuShouPopupButton(Transform parent, Vector2 anchoredPosition, string label, Color col, UnityEngine.Events.UnityAction onClick)
+        {
+            var go = new GameObject("Btn_" + label);
+            go.transform.SetParent(parent, false);
+            var rt = go.AddComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(150f, 44f);
+            rt.anchoredPosition = anchoredPosition;
+            go.AddComponent<Image>().color = col;
+            var b = go.AddComponent<Button>();
+            b.targetGraphic = go.GetComponent<Image>();
+            b.onClick.AddListener(onClick);
+            var tl = CreateGameText(go.transform, label, 18);
+            if (tl != null)
+                SetFullRect(tl.GetComponent<RectTransform>());
+        }
+
+        private static void TearDownJuShouOfferPopup()
+        {
+            if (_juShouOfferRoot != null)
+            {
+                UnityEngine.Object.Destroy(_juShouOfferRoot);
+                _juShouOfferRoot = null;
+            }
+
+            if (_juShouOfferIsPausingTime)
+            {
+                _juShouOfferIsPausingTime = false;
+                Time.timeScale = _juShouOfferPrevTimeScale <= 0f ? 1f : _juShouOfferPrevTimeScale;
+            }
+        }
+
+        private static void OpenDiscardStartRenZheWuDiOfferPopup(System.Action onContinueToDiscardMain, bool renZheSideIsPlayer)
+        {
+            if (_root == null || _state == null)
+            {
+                onContinueToDiscardMain?.Invoke();
+                return;
+            }
+
+            TearDownDiscardStartRenZheWuDiOfferPopup();
+            _discardStartRenZheIsPausingTime = true;
+            _discardStartRenZheWuDiPrevTimeScale = Time.timeScale;
+            Time.timeScale = 0f;
+            _discardStartRenZheWuDiRoot = new GameObject("DiscardStartRenZheWuDi");
+            _discardStartRenZheWuDiRoot.transform.SetParent(_root.transform, false);
+            var rootRt = _discardStartRenZheWuDiRoot.AddComponent<RectTransform>();
+            SetFullRect(rootRt);
+            var cvs = _discardStartRenZheWuDiRoot.AddComponent<Canvas>();
+            cvs.overrideSorting = true;
+            cvs.sortingOrder = 70;
+            _discardStartRenZheWuDiRoot.AddComponent<GraphicRaycaster>();
+            var overlay = new GameObject("Overlay");
+            overlay.transform.SetParent(_discardStartRenZheWuDiRoot.transform, false);
+            SetFullRect(overlay.AddComponent<RectTransform>());
+            overlay.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(_discardStartRenZheWuDiRoot.transform, false);
+            var pr = panel.AddComponent<RectTransform>();
+            pr.anchorMin = pr.anchorMax = new Vector2(0.5f, 0.5f);
+            pr.sizeDelta = new Vector2(520f, 220f);
+            panel.AddComponent<Image>().color = new Color(0.32f, 0.34f, 0.4f, 0.98f);
+            string title = "\u3010\u4ec1\u8005\u65e0\u654c\u3011\uff1a\u662f\u5426\u5728\u5f03\u724c\u9636\u6bb5\u5f00\u59cb\u53d1\u52a8\uff1f\uff08\u6478\u724c\u5e76\u5c55\u793a\u6700\u540e\u4e00\u5f20\uff0c\u6309\u989c\u8272\u56de\u8840\u6216\u9020\u6210\u901a\u7528\u4f24\u5bb3\uff09";
+            var titleTxt = CreateGameText(panel.transform, title, 18, TextAlignmentOptions.Center);
+            if (titleTxt != null)
+            {
+                var tr = titleTxt.GetComponent<RectTransform>();
+                tr.anchorMin = new Vector2(0.06f, 0.48f);
+                tr.anchorMax = new Vector2(0.94f, 0.92f);
+                tr.offsetMin = tr.offsetMax = Vector2.zero;
+            }
+
+            void Finish()
+            {
+                TearDownDiscardStartRenZheWuDiOfferPopup();
+                onContinueToDiscardMain?.Invoke();
+            }
+
+            void OnYes()
+            {
+                OfflineSkillEngine.TryApplyDiscardEndRenZheWuDi(_state, renZheSideIsPlayer, Finish, out _, true);
+            }
+
+            void OnNo()
+            {
+                Finish();
+            }
+
+            CreateJuShouPopupButton(panel.transform, new Vector2(-110f, -72f), "\u53d1\u52a8", new Color(0.22f, 0.52f, 0.38f, 1f), OnYes);
+            CreateJuShouPopupButton(panel.transform, new Vector2(110f, -72f), "\u4e0d\u53d1\u52a8", new Color(0.42f, 0.42f, 0.46f, 1f), OnNo);
+            _discardStartRenZheWuDiRoot.transform.SetAsLastSibling();
+        }
+
+        private static void TearDownDiscardStartRenZheWuDiOfferPopup()
+        {
+            if (_discardStartRenZheWuDiRoot != null)
+            {
+                UnityEngine.Object.Destroy(_discardStartRenZheWuDiRoot);
+                _discardStartRenZheWuDiRoot = null;
+            }
+
+            if (_discardStartRenZheIsPausingTime)
+            {
+                _discardStartRenZheIsPausingTime = false;
+                Time.timeScale = _discardStartRenZheWuDiPrevTimeScale <= 0f ? 1f : _discardStartRenZheWuDiPrevTimeScale;
+            }
+        }
+
+        /// <summary>战斗指示物悬浮介绍（intro.xlsx id，与图鉴 tag 一致）。</summary>
+        public static void ShowBattleIndicatorIntroTooltip(string introLookupId, Vector3 screenPosition)
+        {
+            if (_root == null)
+                return;
+            EnsureBattleIndicatorIntroTooltip();
+            string intro = IntroLoader.GetIntro(introLookupId ?? string.Empty);
+            _battleIndicatorIntroTooltipText.text = string.IsNullOrEmpty(intro) ? "\uff08\u6682\u65e0\u4ecb\u7ecd\uff09" : intro;
+            _battleIndicatorIntroTooltipRoot.SetActive(true);
+            _battleIndicatorIntroTooltipRoot.transform.SetAsLastSibling();
+            var pr = _battleIndicatorIntroTooltipText.rectTransform.parent as RectTransform;
+            if (pr != null)
+            {
+                Canvas.ForceUpdateCanvases();
+                LayoutRebuilder.ForceRebuildLayoutImmediate(_battleIndicatorIntroTooltipText.rectTransform);
+                float preferredH = LayoutUtility.GetPreferredHeight(_battleIndicatorIntroTooltipText.rectTransform);
+                float panelW = 420f;
+                float panelH = Mathf.Clamp(preferredH + 36f, 72f, 360f);
+                pr.sizeDelta = new Vector2(panelW, panelH);
+            }
+
+            var canvasRt = _root.GetComponent<RectTransform>();
+            var rootCanvas = _root.GetComponent<Canvas>();
+            Camera eventCam = rootCanvas != null && rootCanvas.renderMode == RenderMode.ScreenSpaceCamera ? rootCanvas.worldCamera : null;
+            if (canvasRt != null && RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRt, screenPosition, eventCam, out Vector2 local))
+            {
+                var tipRt = _battleIndicatorIntroTooltipRoot.GetComponent<RectTransform>();
+                if (tipRt != null)
+                {
+                    tipRt.anchorMin = tipRt.anchorMax = new Vector2(0f, 1f);
+                    tipRt.pivot = new Vector2(0f, 1f);
+                    float w = pr != null ? pr.sizeDelta.x : 420f;
+                    float h = pr != null ? pr.sizeDelta.y : 120f;
+                    float lx = Mathf.Clamp(local.x + 12f, -canvasRt.rect.width * 0.5f + 8f, canvasRt.rect.width * 0.5f - w - 8f);
+                    float ly = Mathf.Clamp(local.y - 12f, -canvasRt.rect.height * 0.5f + h + 8f, canvasRt.rect.height * 0.5f - 8f);
+                    tipRt.anchoredPosition = new Vector2(lx, ly);
+                    tipRt.sizeDelta = new Vector2(w, h);
+                }
+            }
+        }
+
+        public static void HideBattleIndicatorIntroTooltip()
+        {
+            if (_battleIndicatorIntroTooltipRoot != null)
+                _battleIndicatorIntroTooltipRoot.SetActive(false);
+        }
+
+        private static void EnsureBattleIndicatorIntroTooltip()
+        {
+            if (_battleIndicatorIntroTooltipRoot != null)
+                return;
+            var go = new GameObject("BattleIndicatorIntroTooltip");
+            go.transform.SetParent(_root.transform, false);
+            _battleIndicatorIntroTooltipRoot = go;
+            var rt = go.AddComponent<RectTransform>();
+            rt.sizeDelta = new Vector2(420f, 120f);
+            var cvs = go.AddComponent<Canvas>();
+            cvs.overrideSorting = true;
+            cvs.sortingOrder = 95;
+            go.AddComponent<GraphicRaycaster>();
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(go.transform, false);
+            var pr = panel.AddComponent<RectTransform>();
+            SetFullRect(pr);
+            panel.AddComponent<Image>().color = new Color(0.12f, 0.14f, 0.18f, 0.96f);
+            var textGo = new GameObject("Text");
+            textGo.transform.SetParent(panel.transform, false);
+            var tr = textGo.AddComponent<RectTransform>();
+            tr.anchorMin = new Vector2(0.04f, 0.06f);
+            tr.anchorMax = new Vector2(0.96f, 0.94f);
+            tr.offsetMin = tr.offsetMax = Vector2.zero;
+            _battleIndicatorIntroTooltipText = CreateGameText(textGo.transform, string.Empty, 16, TextAlignmentOptions.TopLeft);
+            if (_battleIndicatorIntroTooltipText != null)
+            {
+                _battleIndicatorIntroTooltipText.enableWordWrapping = true;
+                _battleIndicatorIntroTooltipText.alignment = TextAlignmentOptions.TopLeft;
+            }
+
+            go.SetActive(false);
+        }
+
         private static void ApplyPlayerHandDockLayout(bool expanded)
         {
             if (_playerHandDockRt == null)
@@ -1234,22 +1970,33 @@ namespace JunzhenDuijue
             float labelGap = 6f;
             float labelH = 22f;
             float margin = HandDockMargin;
+            float indStripH = ComputePlayerIndicatorStripOuterHeight();
             if (!expanded)
             {
                 float w = CompactHandW;
-                float totalH = labelGap + labelH + CompactHandH;
+                float totalH = indStripH + labelGap + labelH + CompactHandH;
                 _playerHandDockRt.anchorMin = new Vector2(1f, 0f);
                 _playerHandDockRt.anchorMax = new Vector2(1f, 0f);
                 _playerHandDockRt.pivot = new Vector2(1f, 0f);
                 _playerHandDockRt.anchoredPosition = new Vector2(-margin, margin);
                 _playerHandDockRt.sizeDelta = new Vector2(w, totalH);
+                if (_playerIndicatorStripOuterRt != null)
+                {
+                    _playerIndicatorStripOuterRt.gameObject.SetActive(indStripH > 0.5f);
+                    _playerIndicatorStripOuterRt.anchorMin = new Vector2(0f, 1f);
+                    _playerIndicatorStripOuterRt.anchorMax = new Vector2(1f, 1f);
+                    _playerIndicatorStripOuterRt.pivot = new Vector2(0.5f, 1f);
+                    _playerIndicatorStripOuterRt.offsetMax = Vector2.zero;
+                    _playerIndicatorStripOuterRt.offsetMin = new Vector2(0f, -indStripH);
+                }
+
                 if (_playerHandLabelRt != null)
                 {
                     _playerHandLabelRt.anchorMin = new Vector2(0f, 1f);
                     _playerHandLabelRt.anchorMax = new Vector2(1f, 1f);
                     _playerHandLabelRt.pivot = new Vector2(0.5f, 1f);
-                    _playerHandLabelRt.offsetMax = new Vector2(-8f, 0f);
-                    _playerHandLabelRt.offsetMin = new Vector2(8f, -(labelGap + labelH));
+                    _playerHandLabelRt.offsetMax = new Vector2(-8f, -indStripH);
+                    _playerHandLabelRt.offsetMin = new Vector2(8f, -(indStripH + labelGap + labelH));
                 }
 
                 if (_playerHandFrameRt != null)
@@ -1266,19 +2013,29 @@ namespace JunzhenDuijue
             else
             {
                 float w = ExpandedHandOuterW;
-                float totalH = labelGap + labelH + ExpandedHandOuterH;
+                float totalH = indStripH + labelGap + labelH + ExpandedHandOuterH;
                 _playerHandDockRt.anchorMin = new Vector2(0.5f, 0f);
                 _playerHandDockRt.anchorMax = new Vector2(0.5f, 0f);
                 _playerHandDockRt.pivot = new Vector2(0.5f, 0f);
                 _playerHandDockRt.anchoredPosition = new Vector2(0f, 48f);
                 _playerHandDockRt.sizeDelta = new Vector2(w, totalH);
+                if (_playerIndicatorStripOuterRt != null)
+                {
+                    _playerIndicatorStripOuterRt.gameObject.SetActive(indStripH > 0.5f);
+                    _playerIndicatorStripOuterRt.anchorMin = new Vector2(0f, 1f);
+                    _playerIndicatorStripOuterRt.anchorMax = new Vector2(1f, 1f);
+                    _playerIndicatorStripOuterRt.pivot = new Vector2(0.5f, 1f);
+                    _playerIndicatorStripOuterRt.offsetMax = Vector2.zero;
+                    _playerIndicatorStripOuterRt.offsetMin = new Vector2(0f, -indStripH);
+                }
+
                 if (_playerHandLabelRt != null)
                 {
                     _playerHandLabelRt.anchorMin = new Vector2(0f, 1f);
                     _playerHandLabelRt.anchorMax = new Vector2(1f, 1f);
                     _playerHandLabelRt.pivot = new Vector2(0.5f, 1f);
-                    _playerHandLabelRt.offsetMax = new Vector2(-8f, 0f);
-                    _playerHandLabelRt.offsetMin = new Vector2(8f, -(labelGap + labelH));
+                    _playerHandLabelRt.offsetMax = new Vector2(-8f, -indStripH);
+                    _playerHandLabelRt.offsetMin = new Vector2(8f, -(indStripH + labelGap + labelH));
                 }
 
                 if (_playerHandFrameRt != null)
@@ -4433,6 +5190,18 @@ namespace JunzhenDuijue
                 }
                 if (_state.CurrentPhase == BattlePhase.Defense && !_state.IsPlayerTurn && SkillHasTag(data, skillIndex, "防御技"))
                 {
+                    if (_state.PendingIgnoreDefenseReduction)
+                    {
+                        ToastUI.Show("\u672c\u6b21\u4f24\u5bb3\u4e0d\u53ef\u9632\u5fa1\uff0c\u65e0\u6cd5\u4f7f\u7528\u9632\u5fa1\u6280", 2.2f);
+                        return;
+                    }
+
+                    if (_state.DefenseSkillLocked)
+                    {
+                        ToastUI.Show("\u672c\u6b21\u53d7\u51fb\u5df2\u58f0\u660e\u9632\u5fa1\u6280\uff0c\u65e0\u6cd5\u518d\u9009\u62e9\u6216\u66f4\u6362\u3002", 2.2f);
+                        return;
+                    }
+
                     _ = OnlineClientService.SelectDefenseSkillAsync(generalIndex, skillIndex);
                     return;
                 }
@@ -4522,6 +5291,7 @@ namespace JunzhenDuijue
             RefreshMoraleIcons();
             RefreshHandCards();
             RefreshPlayedCards();
+            RefreshBattleIndicatorStripUi();
             RefreshNonSkillChromeInteractable();
         }
 
@@ -4750,7 +5520,7 @@ namespace JunzhenDuijue
                         }
 
                         if (_state.CurrentPhase == BattlePhase.Defense && _state.CurrentPhaseStep == PhaseStep.Main && !_state.IsPlayerTurn &&
-                            !_state.PendingIgnoreDefenseReduction)
+                            !_state.PendingIgnoreDefenseReduction && !_state.DefenseSkillLocked)
                             enabled = enabled || SkillHasTag(data, skillIndex, "\u9632\u5fa1\u6280");
                     }
 
@@ -5292,8 +6062,63 @@ namespace JunzhenDuijue
             RefreshAllFromState();
         }
 
+        /// <summary>【八门金锁】翻出 J/Q/K 且防御方带【察势】：离线玩家先选 0/10 再结算入弃牌或入手牌。</summary>
+        public static void BeginBamenJinsuoChaShiResolve(bool defenderIsPlayer)
+        {
+            if (_state == null)
+                return;
+            PokerCard revealed = _state.PendingDefenseBamenReveal;
+            if (revealed == null)
+                return;
+
+            var defSide = _state.GetSide(defenderIsPlayer);
+            int gi = _state.PendingDefenseGeneralIndex;
+            int si = _state.PendingDefenseSkillIndex;
+            if (gi < 0 || gi >= defSide.GeneralCardIds.Count || si < 0)
+            {
+                _state.PendingDefenseBamenReveal = null;
+                defSide.Hand.Add(revealed);
+                RefreshAllFromState();
+                return;
+            }
+
+            string defenseCardId = defSide.GeneralCardIds[gi] ?? string.Empty;
+            SkillRuleEntry rule = SkillRuleLoader.GetRule(defenseCardId, si);
+            int capRank = rule != null && rule.Value2 > 0 ? rule.Value2 : 8;
+            int bonusReduce = rule != null ? Mathf.Max(1, rule.Value1) : 1;
+
+            string rankLabel = revealed.Rank switch
+            {
+                11 => "J",
+                12 => "Q",
+                13 => "K",
+                _ => revealed.Rank.ToString()
+            };
+            string title = "\u3010\u5bdf\u52bf\u3011\u8bf7\u9009\u62e9\u672c\u6b21\u7ffb\u5f00" + rankLabel + "\u7684\u70b9\u6570";
+
+            void ApplyFinish(bool useAsTen)
+            {
+                if (_state == null)
+                    return;
+                if (_state.PendingDefenseBamenReveal != revealed)
+                    return;
+                revealed.ChaShiCourtPlayedAsTen = useAsTen;
+                _state.PendingDefenseBamenReveal = null;
+                OfflineSkillEngine.FinishBamenJinsuoAfterReveal(_state, defenderIsPlayer, revealed, defenseCardId, rule, capRank, bonusReduce);
+                BattlePhaseManager.CompleteDefenseDeclareAfterDeferredBamen(defenderIsPlayer, gi, si);
+                RefreshAllFromState();
+            }
+
+            ShowChaShiCourtRankChoicePopup(
+                revealed,
+                useAsTen => ApplyFinish(useAsTen),
+                onCancel: () => ApplyFinish(false),
+                titleOverride: title);
+        }
+
         /// <summary>【察势】二选一：原 JQK 规则 vs 作 10 点；可选取消（不打入打出区）。</summary>
-        public static void ShowChaShiCourtRankChoicePopup(PokerCard card, Action<bool> onChosenUseAsTen, Action onCancel = null)
+        /// <param name="titleOverride">非空时用作标题整行（否则为「打出」语境默认标题）。</param>
+        public static void ShowChaShiCourtRankChoicePopup(PokerCard card, Action<bool> onChosenUseAsTen, Action onCancel = null, string titleOverride = null)
         {
             if (_root == null || onChosenUseAsTen == null)
             {
@@ -5345,7 +6170,9 @@ namespace JunzhenDuijue
             pImg.sprite = GetWhiteSprite();
             pImg.color = new Color(0.14f, 0.16f, 0.2f, 1f);
 
-            string title = "\u3010\u5bdf\u52bf\u3011\u9009\u62e9\u672c\u6b21\u6253\u51fa" + rankLabel + "\u7684\u70b9\u6570";
+            string title = string.IsNullOrEmpty(titleOverride)
+                ? "\u3010\u5bdf\u52bf\u3011\u9009\u62e9\u672c\u6b21\u6253\u51fa" + rankLabel + "\u7684\u70b9\u6570"
+                : titleOverride;
             var titleT = CreateGameText(panel.transform, title, 22, TextAlignmentOptions.Center);
             if (titleT != null)
             {
@@ -5432,7 +6259,7 @@ namespace JunzhenDuijue
         /// 非攻击技造成伤害且规则未锁定「仅对敌方玩家」时，由玩家选择伤害落在己方或敌方玩家（卡表需在 <see cref="SkillRuleEntry.StringValue2"/> 填
         /// <see cref="SkillRuleDamageFlags.NonAttackDamageLocksToEnemyPlayerOnly"/> 才禁止选择）。
         /// </summary>
-        public static void BeginNonAttackDamageTargetPick(BattleState state, bool sideIsPlayer, int amount, string cardIdRz, string skillName, PokerCard shown, System.Action onComplete)
+        public static void BeginNonAttackDamageTargetPick(BattleState state, bool sideIsPlayer, int amount, string cardIdRz, string skillName, PokerCard shown, System.Action onComplete, bool renZheBattleLogUseDiscardPhaseStart = false)
         {
             if (_root == null || state == null || amount <= 0)
             {
@@ -5440,6 +6267,7 @@ namespace JunzhenDuijue
                 return;
             }
 
+            TearDownDiscardStartRenZheWuDiOfferPopup();
             DestroyNonAttackDamageTargetPickRoot();
             _nonAttackDamageTargetPickOnComplete = onComplete;
             _nonAttackDamageTargetPickPrevTimeScale = Time.timeScale;
@@ -5483,6 +6311,9 @@ namespace JunzhenDuijue
             }
 
             string body = "\u5c55\u793a" + shownName + "\uff08\u9ed1\u8272\uff09\uff0c\u4f60\u9020\u6210" + amount + "\u70b9\u901a\u7528\u4f24\u5bb3\u3002\u8bf7\u9009\u62e9\u4f24\u5bb3\u76ee\u6807\u3002";
+            string phaseMid = renZheBattleLogUseDiscardPhaseStart
+                ? "\u5f03\u724c\u9636\u6bb5\u5f00\u59cb\uff0c\u3010\u4ec1\u8005\u65e0\u654c\u3011\uff1a"
+                : "\u5f03\u724c\u9636\u6bb5\u7ed3\u675f\uff0c\u3010\u4ec1\u8005\u65e0\u654c\u3011\uff1a";
             var bodyT = CreateGameText(panel.transform, body, 18, TextAlignmentOptions.Center);
             if (bodyT != null)
             {
@@ -5495,17 +6326,20 @@ namespace JunzhenDuijue
 
             void finishPick(bool damageOpponent)
             {
-                OfflineSkillEngine.ApplyRenZheWuDiBlackDamageToTarget(state, sideIsPlayer, damageOpponent, amount);
-                string frag = OfflineSkillEngine.FormatRenZheWuDiBlackDamageLogFragment(damageOpponent, shown, amount);
-                BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(sideIsPlayer) + "\u5f03\u724c\u9636\u6bb5\u7ed3\u675f\uff0c\u3010\u4ec1\u8005\u65e0\u654c\u3011\uff1a" + frag);
-                string outcome = "\u5c55\u793a" + shownName + "\uff08\u9ed1\u8272\uff09\uff0c" + (damageOpponent ? "\u5bf9\u654c\u65b9\u73a9\u5bb6" : "\u5bf9\u5df1\u65b9\u73a9\u5bb6") + "\u9020\u6210" + amount + "\u70b9\u901a\u7528\u4f24\u5bb3";
-                SkillEffectBanner.Show(sideIsPlayer, false, SkillEffectBanner.GetRoleNameFromCardId(cardIdRz), skillName ?? string.Empty, outcome);
-                CheckImmediateGameOverAfterHpChange();
-                System.Action cb = _nonAttackDamageTargetPickOnComplete;
+                System.Action storedComplete = _nonAttackDamageTargetPickOnComplete;
                 _nonAttackDamageTargetPickOnComplete = null;
+                float savedTimeScale = _nonAttackDamageTargetPickPrevTimeScale;
                 DestroyNonAttackDamageTargetPickRoot();
-                Time.timeScale = _nonAttackDamageTargetPickPrevTimeScale <= 0f ? 1f : _nonAttackDamageTargetPickPrevTimeScale;
-                cb?.Invoke();
+
+                OfflineSkillEngine.ApplyRenZheWuDiBlackDamageToTarget(state, sideIsPlayer, damageOpponent, amount, finalAmt =>
+                {
+                    string frag = OfflineSkillEngine.FormatRenZheWuDiBlackDamageLogFragment(damageOpponent, shown, finalAmt);
+                    BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(sideIsPlayer) + phaseMid + frag);
+                    string outcome = "\u5c55\u793a" + shownName + "\uff08\u9ed1\u8272\uff09\uff0c" + (damageOpponent ? "\u5bf9\u654c\u65b9\u73a9\u5bb6" : "\u5bf9\u5df1\u65b9\u73a9\u5bb6") + "\u9020\u6210" + finalAmt + "\u70b9\u901a\u7528\u4f24\u5bb3";
+                    SkillEffectBanner.Show(sideIsPlayer, false, SkillEffectBanner.GetRoleNameFromCardId(cardIdRz), skillName ?? string.Empty, outcome);
+                    Time.timeScale = savedTimeScale <= 0f ? 1f : savedTimeScale;
+                    storedComplete?.Invoke();
+                });
             }
 
             void addBtn(float anchorY, string label, bool damageOpponent)
@@ -5534,6 +6368,8 @@ namespace JunzhenDuijue
 
         private static void DestroyNonAttackDamageTargetPickRoot()
         {
+            TearDownDirectDamageResistPopup();
+            TearDownDiscardStartRenZheWuDiOfferPopup();
             if (_nonAttackDamageTargetPickRoot != null)
             {
                 UnityEngine.Object.Destroy(_nonAttackDamageTargetPickRoot);
@@ -5952,6 +6788,9 @@ namespace JunzhenDuijue
         {
             CloseSkillReadonlyInfoPopup();
             TearDownHuBuGuanYouPopup(false);
+            TearDownJuShouOfferPopup();
+            TearDownDiscardStartRenZheWuDiOfferPopup();
+            HideBattleIndicatorIntroTooltip();
             DestroyNonAttackDamageTargetPickRoot();
             _nonAttackDamageTargetPickOnComplete = null;
             if (_root != null) _root.SetActive(false);

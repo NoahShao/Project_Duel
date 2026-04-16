@@ -153,7 +153,7 @@
                 "抵御"
             ],
             "TriggerHint": "Manual",
-            "AllowOnOpponentTurn": false,
+            "AllowOnOpponentTurn": true,
             "EffectId": "play_phase_start_pay_morale_gain_resist",
             "Value1": 2,
             "Value2": 1,

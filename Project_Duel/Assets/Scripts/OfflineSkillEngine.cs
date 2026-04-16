@@ -23,6 +23,9 @@ namespace JunzhenDuijue
         /// <summary>【虎步关右】在技能规则表中的 EffectId。</summary>
         public const string HuBuGuanYouEffectId = "attack_discard_black_gain_extra_phase";
 
+        /// <summary>【八门金锁】翻开牌库顶，小点数减伤否则入手牌。</summary>
+        public const string DefenseRevealSmall8ReduceElseGainEffectId = "defense_reveal_small8_reduce2_else_draw";
+
         private const string Hearts = "\u7ea2\u6843";
         private const string Diamonds = "\u65b9\u7247";
         private const string Spades = "\u9ed1\u6843";
@@ -124,11 +127,12 @@ namespace JunzhenDuijue
         }
 
         /// <summary>
-        /// 【仁者无敌】弃牌阶段结束时：摸 Value1 张，展示最后一张；红色恢复 Value2 生命；黑色造成 Value2 点通用伤害。
+        /// 【仁者无敌】弃牌阶段（开始或结束节点）：摸 Value1 张，展示最后一张；红色恢复 Value2 生命；黑色造成 Value2 点通用伤害。
         /// 若规则未将 <see cref="SkillRuleEntry.StringValue2"/> 设为 <see cref="SkillRuleDamageFlags.NonAttackDamageLocksToEnemyPlayerOnly"/>，则离线己方回合由玩家选择伤害落在己方或敌方玩家；否则仅对敌方玩家。
         /// </summary>
+        /// <param name="battleLogUseDiscardPhaseStartTiming">战报中写「弃牌阶段开始」而非「弃牌阶段结束」。</param>
         /// <returns>true 表示已弹出目标选择，调用方须等待 <paramref name="onFullyResolved"/> 再推进阶段；false 表示已同步结算完毕（或未触发），可立即调用 <paramref name="onFullyResolved"/>。</returns>
-        public static bool TryApplyDiscardEndRenZheWuDi(BattleState state, bool sideIsPlayer, System.Action onFullyResolved, out string message)
+        public static bool TryApplyDiscardEndRenZheWuDi(BattleState state, bool sideIsPlayer, System.Action onFullyResolved, out string message, bool battleLogUseDiscardPhaseStartTiming = false)
         {
             message = string.Empty;
             if (state == null)
@@ -142,6 +146,10 @@ namespace JunzhenDuijue
                 onFullyResolved?.Invoke();
                 return false;
             }
+
+            string phaseMid = battleLogUseDiscardPhaseStartTiming
+                ? "\u5f03\u724c\u9636\u6bb5\u5f00\u59cb\uff0c\u3010\u4ec1\u8005\u65e0\u654c\u3011\uff1a"
+                : "\u5f03\u724c\u9636\u6bb5\u7ed3\u675f\uff0c\u3010\u4ec1\u8005\u65e0\u654c\u3011\uff1a";
 
             var side = state.GetSide(sideIsPlayer);
             int drawCount = Mathf.Max(1, rule.Value1);
@@ -162,6 +170,7 @@ namespace JunzhenDuijue
                 return false;
             }
 
+            state.RenZheWuDiHandledThisDiscardPhase = true;
             PokerCard shown = side.Hand[side.Hand.Count - 1];
             if (IsRed(shown))
             {
@@ -176,29 +185,45 @@ namespace JunzhenDuijue
             bool lockEnemy = rule.LocksNonAttackDamageToEnemyPlayerOnly();
             if (lockEnemy || !sideIsPlayer || GameUI.IsOnlineBattle())
             {
-                ApplyRenZheWuDiBlackDamageToTarget(state, sideIsPlayer, damageOpponent: true, amount);
-                message = "\u3010\u4ec1\u8005\u65e0\u654c\u3011\u5c55\u793a" + shown.DisplayName + "\uff08\u9ed1\u8272\uff09\uff0c\u5bf9\u654c\u65b9\u73a9\u5bb6\u9020\u6210" + amount + "\u70b9\u901a\u7528\u4f24\u5bb3";
-                string outcome = "\u5c55\u793a" + shown.DisplayName + "\uff08\u9ed1\u8272\uff09\uff0c\u5bf9\u654c\u65b9\u73a9\u5bb6\u9020\u6210" + amount + "\u70b9\u901a\u7528\u4f24\u5bb3";
-                SkillEffectBanner.Show(sideIsPlayer, false, SkillEffectBanner.GetRoleNameFromCardId(cardIdRz), rule.SkillName, outcome);
-                GameUI.CheckImmediateGameOverAfterHpChange();
-                onFullyResolved?.Invoke();
+                ApplyRenZheWuDiBlackDamageToTarget(state, sideIsPlayer, damageOpponent: true, amount, finalAmt =>
+                {
+                    string fragment = "\u3010\u4ec1\u8005\u65e0\u654c\u3011\u5c55\u793a" + (shown.DisplayName ?? string.Empty) + "\uff08\u9ed1\u8272\uff09\uff0c\u5bf9\u654c\u65b9\u73a9\u5bb6\u9020\u6210" + finalAmt + "\u70b9\u901a\u7528\u4f24\u5bb3";
+                    BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(sideIsPlayer) + phaseMid + fragment);
+                    string outcome = "\u5c55\u793a" + (shown.DisplayName ?? string.Empty) + "\uff08\u9ed1\u8272\uff09\uff0c\u5bf9\u654c\u65b9\u73a9\u5bb6\u9020\u6210" + finalAmt + "\u70b9\u901a\u7528\u4f24\u5bb3";
+                    SkillEffectBanner.Show(sideIsPlayer, false, SkillEffectBanner.GetRoleNameFromCardId(cardIdRz), rule.SkillName, outcome);
+                    onFullyResolved?.Invoke();
+                });
+                message = string.Empty;
                 return false;
             }
 
-            GameUI.BeginNonAttackDamageTargetPick(state, sideIsPlayer, amount, cardIdRz, rule.SkillName, shown, onFullyResolved);
+            GameUI.BeginNonAttackDamageTargetPick(state, sideIsPlayer, amount, cardIdRz, rule.SkillName, shown, onFullyResolved, battleLogUseDiscardPhaseStartTiming);
             message = string.Empty;
             return true;
         }
 
+        /// <summary>离线己方弃牌阶段：是否可询问发动【仁者无敌】（与结算入口共用规则判定）。</summary>
+        public static bool CanOfferRenZheWuDiDiscard(BattleState state, bool sideIsPlayer)
+        {
+            if (state == null || !sideIsPlayer || GameUI.IsOnlineBattle())
+                return false;
+            if (!TryFindFaceUpRule(state, sideIsPlayer, e => string.Equals(e.EffectId, DiscardEndRenZheWuDiEffectId, StringComparison.Ordinal), out _, out _, out _, out _))
+                return false;
+            var side = state.GetSide(sideIsPlayer);
+            return side.Deck.Count > 0 || side.DiscardPile.Count > 0;
+        }
+
         /// <param name="damageOpponent">true \u2192 \u5bf9\u654c\u65b9\u73a9\u5bb6\u9020\u6210\u4f24\u5bb3\uff1bfalse \u2192 \u5bf9\u5df1\u65b9\u73a9\u5bb6\u3002</param>
-        public static void ApplyRenZheWuDiBlackDamageToTarget(BattleState state, bool sideIsPlayer, bool damageOpponent, int amount)
+        public static void ApplyRenZheWuDiBlackDamageToTarget(BattleState state, bool sideIsPlayer, bool damageOpponent, int amount, System.Action<int> onAppliedWithFinalDamage = null)
         {
             if (state == null || amount <= 0)
+            {
+                onAppliedWithFinalDamage?.Invoke(0);
                 return;
-            if (sideIsPlayer ^ damageOpponent)
-                GameUI.ApplyDamageToPlayer(amount);
-            else
-                GameUI.ApplyDamageToOpponent(amount);
+            }
+
+            bool victimIsPlayer = sideIsPlayer ^ damageOpponent;
+            GameUI.ApplyHpDamageWithOptionalResist(victimIsPlayer, amount, onAppliedWithFinalDamage);
         }
 
         public static string FormatRenZheWuDiBlackDamageLogFragment(bool damageOpponent, PokerCard shown, int amount) =>
@@ -233,6 +258,7 @@ namespace JunzhenDuijue
 
             side.Morale -= cost;
             side.AddEffectLayers(ResistEffectKey, layers);
+            ApplyRenDeWhenMoraleSpent(state, sideIsPlayer);
             string outcome = "\u51cf\u5c11" + cost + "\u70b9\u58eb\u6c14\uff0c\u83b7\u5f97" + layers + "\u5c42\u201c\u62b5\u5fa1\u201d";
             SkillEffectBanner.Show(sideIsPlayer, true, SkillEffectBanner.GetRoleNameFromCardId(rule.CardId), rule.SkillName, outcome);
             return "\u53d1\u52a8\u3010\u636e\u5b88\u3011\uff0c" + outcome;
@@ -252,8 +278,53 @@ namespace JunzhenDuijue
             if (side.RemoveEffectLayers(ResistEffectKey, 1) <= 0)
                 return string.Empty;
 
-            state.PendingDefenseReduction += 1;
-            return "\u79fb\u96641\u5c42\u201c\u62b5\u5fa1\u201d\uff0c\u672c\u6b21\u4f24\u5bb3-1";
+            return "\u79fb\u96641\u5c42\u201c\u62b5\u5fa1\u201d\uff0c\u672c\u6b21\u53d7\u5230\u7684\u4f24\u5bb3\u51cf\u534a\uff08\u5411\u4e0a\u53d6\u6574\u51cf\u514d\u91cf\uff09";
+        }
+
+        /// <summary>移除一层抵御并将伤害按「减半（减免量向上取整）」规则降低；若无法移除则返回原伤害。</summary>
+        public static int ApplyOneResistHalvingToDamageAmount(BattleState state, bool victimIsPlayer, int rawDamage)
+        {
+            if (state == null || rawDamage <= 0)
+                return rawDamage;
+            var side = state.GetSide(victimIsPlayer);
+            if (side.RemoveEffectLayers(ResistEffectKey, 1) <= 0)
+                return rawDamage;
+            return Mathf.Max(0, rawDamage - Mathf.CeilToInt(rawDamage / 2f));
+        }
+
+        /// <summary>非攻击直伤：受害方为对手 AI 时，较高伤害下概率消耗一层抵御。</summary>
+        public static void MaybeAutoConsumeResistForDirectDamage(BattleState state, bool victimIsPlayer, ref int amount)
+        {
+            if (state == null || amount <= 1 || victimIsPlayer)
+                return;
+            if (!HasRemovableDefenseBuff(state, false))
+                return;
+            if (UnityEngine.Random.value > 0.5f)
+                return;
+            int before = amount;
+            amount = ApplyOneResistHalvingToDamageAmount(state, false, amount);
+            if (amount != before)
+                BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(state.IsPlayerTurn) + "\u901a\u7528\u4f24\u5bb3\u7ed3\u7b97\u524d\uff0c\u654c\u65b9\u79fb\u96641\u5c42\u300c\u62b5\u5fa1\u300d\uff0c\u4f24\u5bb3\u7531" + before + "\u53d8\u4e3a" + amount + "\u3002");
+        }
+
+        /// <summary>对手防御流程：在声明防御技前，若持有抵御且本次伤害较高，概率消耗一层减半。</summary>
+        public static void MaybeAutoUseResistBeforeDefenseSkill(BattleState state, bool defenderIsPlayer)
+        {
+            if (state == null || defenderIsPlayer)
+                return;
+            if (!HasRemovableDefenseBuff(state, false))
+                return;
+            int raw = Mathf.Max(0, state.PendingBaseDamage + state.PendingAttackBonus);
+            if (raw < 4)
+                return;
+            if (UnityEngine.Random.value > 0.45f)
+                return;
+            string msg = ConsumeOneDefenseBuff(state, false);
+            if (!string.IsNullOrEmpty(msg))
+            {
+                state.PendingHalveIncomingDamageWithResist = true;
+                BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff08\u81ea\u52a8\uff09\uff0c\u654c\u65b9" + msg + "\u3002");
+            }
         }
 
         /// <summary>由 <see cref="HandEmptyPassiveCoordinator"/> 在同节点顺序结算时调用。</summary>
@@ -556,19 +627,86 @@ namespace JunzhenDuijue
             TryShowAttackDeclareBanner(state, attackerIsPlayer, afterAttackDeclareBanner);
         }
 
-        public static void ConfigureDefenseSkill(BattleState state, bool defenderIsPlayer, int generalIndex, int skillIndex)
+        /// <returns>若 true，表示防御宣告的战报与横幅需延后到 <see cref="GameUI.BeginBamenJinsuoChaShiResolve"/> 察势完成后再走 <see cref="BattlePhaseManager.CompleteDefenseDeclareAfterDeferredBamen"/>。</returns>
+        public static bool ConfigureDefenseSkill(BattleState state, bool defenderIsPlayer, int generalIndex, int skillIndex)
         {
             if (state == null)
-                return;
+                return false;
 
-            if (!TryGetFaceUpRule(state, defenderIsPlayer, generalIndex, skillIndex, out _, out _))
+            state.PendingDefenseBamenReveal = null;
+
+            if (!TryGetFaceUpRule(state, defenderIsPlayer, generalIndex, skillIndex, out string cardId, out SkillRuleEntry rule) || rule == null)
             {
                 state.PendingDefenseReduction = Mathf.Max(state.PendingDefenseReduction, 1);
-                return;
+                return false;
             }
+
+            if (string.Equals(rule.EffectId, DefenseRevealSmall8ReduceElseGainEffectId, StringComparison.Ordinal))
+                return ApplyDefenseBamenJinsuo(state, defenderIsPlayer, cardId, rule);
 
             state.PendingDefenseReduction = Mathf.Max(state.PendingDefenseReduction, 1);
             AppendCombatNote(state, "\u9632\u5fa1\u6280\u9ed8\u8ba4\u51cf\u4f24+1");
+            return false;
+        }
+
+        /// <summary>【八门金锁】在翻出牌并已确定察势（若需）后，按比对点数入弃牌/手牌并更新减伤与战报。</summary>
+        public static void FinishBamenJinsuoAfterReveal(BattleState state, bool defenderIsPlayer, PokerCard revealed, string cardId, SkillRuleEntry rule, int capRank, int bonusReduce)
+        {
+            if (state == null || revealed == null)
+                return;
+
+            state.PendingDefenseBamenReveal = null;
+            var defSide = state.GetSide(defenderIsPlayer);
+            int eff = PokerPatternRules.GetComparisonPoint(revealed);
+            string cardLabel = revealed.DisplayName ?? string.Empty;
+            string skillName = rule != null ? rule.SkillName : "\u516b\u95e8\u91d1\u9501";
+
+            if (eff <= capRank)
+            {
+                defSide.DiscardPile.Add(revealed);
+                state.PendingDefenseReduction = Mathf.Max(state.PendingDefenseReduction, bonusReduce);
+                string outcome = "\u7ffb\u5f00\u724c\u5e93\u9876\u3010" + cardLabel + "\u3011\uff08\u5c0f" + capRank + "\u70b9\u5224\u5b9a\uff1a\u8ba1\u4f5c" + eff + "\u70b9\uff09\uff0c\u672c\u6b21\u53d7\u5230\u7684\u4f24\u5bb3-" + bonusReduce;
+                AppendCombatNote(state, "\u3010\u516b\u95e8\u91d1\u9501\u3011" + outcome);
+                if (!BattleAttackPreview.SuppressSkillBanners)
+                    SkillEffectBanner.Show(defenderIsPlayer, true, SkillEffectBanner.GetRoleNameFromCardId(cardId), skillName, outcome);
+            }
+            else
+            {
+                defSide.Hand.Add(revealed);
+                string outcome = "\u7ffb\u5f00\u724c\u5e93\u9876\u3010" + cardLabel + "\u3011\uff08\u5c0f" + capRank + "\u70b9\u5224\u5b9a\uff1a\u8ba1\u4f5c" + eff + "\u70b9\uff09\uff0c\u83b7\u5f97\u8be5\u724c";
+                AppendCombatNote(state, "\u3010\u516b\u95e8\u91d1\u9501\u3011" + outcome);
+                if (!BattleAttackPreview.SuppressSkillBanners)
+                    SkillEffectBanner.Show(defenderIsPlayer, true, SkillEffectBanner.GetRoleNameFromCardId(cardId), skillName, outcome);
+            }
+        }
+
+        private static bool ApplyDefenseBamenJinsuo(BattleState state, bool defenderIsPlayer, string cardId, SkillRuleEntry rule)
+        {
+            var defSide = state.GetSide(defenderIsPlayer);
+            state.PendingDefenseReduction = Mathf.Max(state.PendingDefenseReduction, 1);
+            if (!BattleState.TryPopTopDeckCardForReveal(defSide, out PokerCard revealed))
+            {
+                AppendCombatNote(state, "\u3010\u516b\u95e8\u91d1\u9501\u3011\u724c\u5e93\u7a7a\uff0c\u4ec5\u767b\u8bb0\u57fa\u7840\u9632\u5fa1\u51cf\u4f24");
+                return false;
+            }
+
+            int capRank = rule.Value2 > 0 ? rule.Value2 : 8;
+            int bonusReduce = Mathf.Max(1, rule.Value1);
+            bool needsChaShi = ChaShiSkillRules.HandDeckCardNeedsChaShiChoice(state, defenderIsPlayer, revealed);
+
+            if (needsChaShi && !GameUI.IsOnlineBattle() && defenderIsPlayer)
+            {
+                revealed.ChaShiCourtPlayedAsTen = false;
+                state.PendingDefenseBamenReveal = revealed;
+                GameUI.BeginBamenJinsuoChaShiResolve(defenderIsPlayer);
+                return true;
+            }
+
+            if (needsChaShi)
+                revealed.ChaShiCourtPlayedAsTen = false;
+
+            FinishBamenJinsuoAfterReveal(state, defenderIsPlayer, revealed, cardId, rule, capRank, bonusReduce);
+            return false;
         }
 
         private static bool TryActivateGenericPrimarySkill(BattleState state, SideState side, SkillRuleEntry rule, out string message)
