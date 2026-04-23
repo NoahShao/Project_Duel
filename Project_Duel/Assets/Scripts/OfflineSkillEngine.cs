@@ -24,7 +24,7 @@ namespace JunzhenDuijue
         /// <summary>【虎步关右】在技能规则表中的 EffectId。</summary>
         public const string HuBuGuanYouEffectId = "attack_discard_black_gain_extra_phase";
 
-        /// <summary>【江东猛虎】孙坚攻击技：对子/两对兵刃伤害，出牌阶段结束时恢复士气（见 <see cref="GameUI.RunJiangDongMengHuPlayPhaseEndThen"/>）。</summary>
+        /// <summary>【江东猛虎】孙坚攻击技：对子/两对兵刃伤害；登记士气在<strong>本次攻击伤害结算后</strong>由 <see cref="GameUI.RunJiangDongMengHuPlayPhaseEndThen"/> 恢复并询问士气技。</summary>
         public const string AttackJiangdongMengHuEffectId = "attack_pair_restore_morale_end_phase";
 
         /// <summary>【孙策·转斗千里】规则表 EffectId。</summary>
@@ -911,7 +911,7 @@ namespace JunzhenDuijue
             if (state.PendingIgnoreDefenseReduction)
                 line.Append("\uff1b\u672c\u6b21\u4e0d\u53ef\u9632\u5fa1\u51cf\u4f24");
             if (state.PendingSunJianMoraleRestoreAmount > 0)
-                line.Append("\uff1b\u672c\u51fa\u724c\u9636\u6bb5\u7ed3\u675f\u65f6\u58eb\u6c14+").Append(state.PendingSunJianMoraleRestoreAmount);
+                line.Append("\uff1b\u672c\u6b21\u653b\u51fb\u4f24\u5bb3\u7ed3\u7b97\u540e\u58eb\u6c14+").Append(state.PendingSunJianMoraleRestoreAmount);
         }
 
         private static void ClearJiangdongMengHuMoralePending(BattleState state)
@@ -922,7 +922,7 @@ namespace JunzhenDuijue
             state.PendingSunJianMoraleRestorePlayPhaseIndex = -1;
         }
 
-        /// <summary>出牌阶段 End 已结算【江东猛虎】士气后清除登记（由 <see cref="GameUI.RunJiangDongMengHuPlayPhaseEndThen"/> 调用）。</summary>
+        /// <summary>攻击伤害结算后已处理【江东猛虎】士气恢复时清除登记（由 <see cref="GameUI.RunJiangDongMengHuPlayPhaseEndThen"/> 调用）。</summary>
         public static void ClearPendingSunJianMoraleRestoreAfterResolved(BattleState state) => ClearJiangdongMengHuMoralePending(state);
 
         private static bool SunJianPlayedIsPair(List<PokerCard> cards) =>
@@ -979,7 +979,7 @@ namespace JunzhenDuijue
             state.PendingAttackSkillKind = SelectedSkillKind.GeneralSkill;
             AppendCombatNote(
                 state,
-                "\u3010\u6c5f\u4e1c\u731b\u864e\u3011" + shapeLabel + "\uff0c" + damage + "\u70b9\u5175\u5203\u4f24\u5bb3\uff0c\u672c\u51fa\u724c\u9636\u6bb5\u7ed3\u675f\u65f6\u58eb\u6c14+" + moraleRestore);
+                "\u3010\u6c5f\u4e1c\u731b\u864e\u3011" + shapeLabel + "\uff0c" + damage + "\u70b9\u5175\u5203\u4f24\u5bb3\uff0c\u672c\u6b21\u653b\u51fb\u4f24\u5bb3\u7ed3\u7b97\u540e\u58eb\u6c14+" + moraleRestore);
             return true;
         }
 
@@ -1037,10 +1037,31 @@ namespace JunzhenDuijue
             state.PendingAttackPatternVariant = -1;
 
             bool declareFlush = variant == 1;
-            if (declareFlush && !SunCeStraightRules.IsSunCeStraightFlush(cards))
-                declareFlush = false;
+            int len;
+            if (cards.Count <= 5)
+            {
+                int maxStraight = SunCeStraightRules.GetMaxFlexibleStraightSubsetLength(cards);
+                int maxFlush = SunCeStraightRules.GetMaxStraightFlushSubsetLength(cards);
+                if (declareFlush)
+                {
+                    if (maxFlush >= 3)
+                        len = maxFlush;
+                    else
+                    {
+                        declareFlush = false;
+                        len = maxStraight;
+                    }
+                }
+                else
+                    len = maxStraight;
+            }
+            else
+            {
+                len = cards.Count;
+                if (declareFlush && !SunCeStraightRules.IsSunCeStraightFlush(cards))
+                    declareFlush = false;
+            }
 
-            int len = cards.Count;
             state.PendingBaseDamage = len;
             state.PendingDamageCategory = DamageCategory.Blade;
             state.PendingDamageElement = DamageElement.None;
@@ -1062,17 +1083,21 @@ namespace JunzhenDuijue
         {
             if (state == null || cards == null)
                 return;
-            state.PendingAttackPatternVariant = SunCeStraightRules.IsSunCeStraightFlush(cards) ? 1 : 0;
+            if (cards.Count <= 5)
+                state.PendingAttackPatternVariant = SunCeStraightRules.GetMaxStraightFlushSubsetLength(cards) >= 3 ? 1 : 0;
+            else
+                state.PendingAttackPatternVariant = SunCeStraightRules.IsSunCeStraightFlush(cards) ? 1 : 0;
         }
 
         public static string DescribeSunCeZhuandouShapeForBanner(BattleState state, IReadOnlyList<PokerCard> played)
         {
             if (played == null || played.Count < 3 || state == null)
                 return string.Empty;
+            int shown = state.PendingBaseDamage > 0 ? state.PendingBaseDamage : played.Count;
             return state.PendingSunCeZhuandouBannerKind switch
             {
-                1 => "\u81ea\u7531\u540c\u82b1\u987a\uff08" + played.Count + "\u5f20\uff09",
-                0 => "\u81ea\u7531\u987a\u5b50\uff08" + played.Count + "\u5f20\uff09",
+                1 => "\u81ea\u7531\u540c\u82b1\u987a\uff08" + shown + "\u5f20\uff09",
+                0 => "\u81ea\u7531\u987a\u5b50\uff08" + shown + "\u5f20\uff09",
                 _ => string.Empty,
             };
         }

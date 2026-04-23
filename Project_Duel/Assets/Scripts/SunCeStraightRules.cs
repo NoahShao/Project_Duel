@@ -4,8 +4,9 @@ using UnityEngine;
 namespace JunzhenDuijue
 {
     /// <summary>
-    /// 【孙策·转斗千里】自由顺子 / 自由同花顺：长度 ≥3 且 <see cref="PokerPatternRules.IsFlexibleStraight"/>；
-    /// 张数 &gt;5 时，按<strong>打出顺序</strong>最后一张须在合法赋值下处于顺子端点（延伸连续段）。
+    /// 【孙策·转斗千里】自由顺子 / 自由同花顺：长度 ≥3 且 <see cref="PokerPatternRules.IsFlexibleStraight"/>。
+    /// 打出区张数 ≤5 时：允许带「不参与顺子的废牌」，只要存在 ≥3 张的子集构成顺子即可宣言；同花顺同理看子集。
+    /// 张数 &gt;5 时：整叠须能构成自由顺子（与同花顺）；打出顺序不要求末张落在顺子端点。
     /// </summary>
     public static class SunCeStraightRules
     {
@@ -31,25 +32,96 @@ namespace JunzhenDuijue
             int n = cardsInPlayOrder.Count;
             if (n == 0 || n == 1 || n == 2)
                 return true;
-            if (!PokerPatternRules.IsFlexibleStraight(cardsInPlayOrder, n))
-                return false;
-            if (n <= 5)
-                return true;
-            return IsFlexibleStraightWithLastAtEndpoint(cardsInPlayOrder);
+            return PokerPatternRules.IsFlexibleStraight(cardsInPlayOrder, n);
         }
 
         /// <summary>
-        /// 与 <see cref="IsValidSunCeBuildInPlayOrder"/> 相同，但要求 n≥3 且已能构成顺子或同花顺（用于宣言配置）。
+        /// 宣言时：≤5 张为「存在 ≥3 张的顺子子集」；&gt;5 张为整叠 <see cref="IsValidSunCeBuildInPlayOrder"/>。
         /// </summary>
         public static bool IsValidSunCeDeclareShape(IReadOnlyList<PokerCard> cardsInPlayOrder)
         {
             if (cardsInPlayOrder == null || cardsInPlayOrder.Count < 3)
                 return false;
+            int n = cardsInPlayOrder.Count;
+            if (n <= 5)
+                return GetMaxFlexibleStraightSubsetLength(cardsInPlayOrder) >= 3;
             return IsValidSunCeBuildInPlayOrder(cardsInPlayOrder);
         }
 
+        /// <summary>打出区 ≤5 张时：子集中能构成的最长顺子长度（无则 0）。</summary>
+        public static int GetMaxFlexibleStraightSubsetLength(IReadOnlyList<PokerCard> cards)
+        {
+            if (cards == null || cards.Count < 3)
+                return 0;
+            int total = cards.Count;
+            if (total > 5)
+                return 0;
+
+            int best = 0;
+            int limit = 1 << total;
+            for (int mask = 1; mask < limit; mask++)
+            {
+                int k = PopCount(mask);
+                if (k < 3)
+                    continue;
+                var sub = new List<PokerCard>(k);
+                for (int i = 0; i < total; i++)
+                {
+                    if ((mask & (1 << i)) != 0)
+                        sub.Add(cards[i]);
+                }
+
+                if (PokerPatternRules.IsFlexibleStraight(sub, k))
+                    best = Mathf.Max(best, k);
+            }
+
+            return best;
+        }
+
+        /// <summary>打出区 ≤5 张时：子集中能构成的最长同花顺长度（无则 0）。</summary>
+        public static int GetMaxStraightFlushSubsetLength(IReadOnlyList<PokerCard> cards)
+        {
+            if (cards == null || cards.Count < 3)
+                return 0;
+            int total = cards.Count;
+            if (total > 5)
+                return 0;
+
+            int best = 0;
+            int limit = 1 << total;
+            for (int mask = 1; mask < limit; mask++)
+            {
+                int k = PopCount(mask);
+                if (k < 3)
+                    continue;
+                var sub = new List<PokerCard>(k);
+                for (int i = 0; i < total; i++)
+                {
+                    if ((mask & (1 << i)) != 0)
+                        sub.Add(cards[i]);
+                }
+
+                if (PokerPatternRules.IsFlexibleStraight(sub, k) && PokerPatternRules.IsFlush(sub))
+                    best = Mathf.Max(best, k);
+            }
+
+            return best;
+        }
+
+        private static int PopCount(int mask)
+        {
+            int c = 0;
+            while (mask != 0)
+            {
+                c++;
+                mask &= mask - 1;
+            }
+
+            return c;
+        }
+
         /// <summary>
-        /// 出牌阶段追加一张（含将牌当牌）：张数 ≤5 时不校验；&gt;5 时须满足 <see cref="IsValidSunCeBuildInPlayOrder"/>（含端点延伸）。
+        /// 出牌阶段追加一张（含将牌当牌）：张数 ≤5 时不校验；&gt;5 时须整叠满足 <see cref="IsValidSunCeBuildInPlayOrder"/>。
         /// </summary>
         public static bool AllowsSunCeStackAppendAfterAdd(IReadOnlyList<PokerCard> playedInOrderBeforeAdd, PokerCard cardToAdd)
         {
@@ -62,80 +134,6 @@ namespace JunzhenDuijue
                 combined.AddRange(playedInOrderBeforeAdd);
             combined.Add(cardToAdd);
             return IsValidSunCeBuildInPlayOrder(combined);
-        }
-
-        /// <summary>与 <see cref="PokerPatternRules.IsFlexibleStraight"/> 同源 DFS，但 n&gt;5 时要求末张（打出序最后一牌）赋值落在顺子端点。</summary>
-        private static bool IsFlexibleStraightWithLastAtEndpoint(IReadOnlyList<PokerCard> cards)
-        {
-            int count = cards.Count;
-            if (count < 6)
-                return true;
-
-            var options = new List<int[]>(count);
-            for (int i = 0; i < count; i++)
-            {
-                PokerCard c = cards[i];
-                int r = c.Rank;
-                if (r == 1)
-                    options.Add(new[] { 1, 14 });
-                else if (r is >= 2 and <= 10)
-                    options.Add(new[] { r });
-                else if (r is >= 11 and <= 13)
-                {
-                    if (!c.PlayedAsGeneral && c.ChaShiCourtPlayedAsTen)
-                        options.Add(new[] { 10 });
-                    else
-                        options.Add(new[] { r });
-                }
-                else
-                    return false;
-            }
-
-            var assigned = new int[count];
-            bool found = false;
-
-            void Dfs(int index)
-            {
-                if (found)
-                    return;
-                if (index >= count)
-                {
-                    var sorted = new List<int>(assigned);
-                    sorted.Sort();
-                    for (int k = 1; k < sorted.Count; k++)
-                    {
-                        if (sorted[k] != sorted[k - 1] + 1)
-                            return;
-                    }
-
-                    int last = assigned[count - 1];
-                    if (last != sorted[0] && last != sorted[sorted.Count - 1])
-                        return;
-                    found = true;
-                    return;
-                }
-
-                foreach (int v in options[index])
-                {
-                    bool dup = false;
-                    for (int j = 0; j < index; j++)
-                    {
-                        if (assigned[j] == v)
-                        {
-                            dup = true;
-                            break;
-                        }
-                    }
-
-                    if (dup)
-                        continue;
-                    assigned[index] = v;
-                    Dfs(index + 1);
-                }
-            }
-
-            Dfs(0);
-            return found;
         }
     }
 }

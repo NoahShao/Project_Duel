@@ -57,6 +57,7 @@ namespace JunzhenDuijue
         private static GameObject _battleGmToolsSectionRoot;
         private static TMP_InputField _gmMoraleRestoreInput;
         private static TMP_InputField _gmMoraleCapAddInput;
+        private static TMP_InputField _gmDrawCardsInput;
         private static TextMeshProUGUI _deckCountTooltip;
         private static GameObject _deckTooltipRoot;
         private static Button _discardButton;
@@ -736,7 +737,7 @@ namespace JunzhenDuijue
             panel.transform.SetParent(_battleSettingsPopupRoot.transform, false);
             var panelRect = panel.AddComponent<RectTransform>();
             panelRect.anchorMin = panelRect.anchorMax = new Vector2(0.5f, 0.5f);
-            panelRect.sizeDelta = new Vector2(400f, 420f);
+            panelRect.sizeDelta = new Vector2(400f, 472f);
             panel.AddComponent<Image>().color = new Color(0.16f, 0.18f, 0.24f, 0.98f);
 
             var titleGo = new GameObject("Title");
@@ -849,6 +850,7 @@ namespace JunzhenDuijue
 
             AddGmRow("\u6062\u590d\u58eb\u6c14", out _gmMoraleRestoreInput, OnGmBattleMoraleRestoreClicked);
             AddGmRow("\u58eb\u6c14\u4e0a\u9650", out _gmMoraleCapAddInput, OnGmBattleMoraleCapAddClicked);
+            AddGmRow("\u62bd\u724c\u5f20\u6570", out _gmDrawCardsInput, OnGmBattleDrawCardsClicked);
 
             var gmHintGo = new GameObject("GmHint");
             gmHintGo.transform.SetParent(_battleGmToolsSectionRoot.transform, false);
@@ -984,6 +986,36 @@ namespace JunzhenDuijue
             side.Morale = Mathf.Min(side.MoraleCap, Mathf.Max(0, side.Morale));
             RefreshAllFromState();
             ToastUI.Show("\u58eb\u6c14\u4e0a\u9650 " + beforeCap + " \u2192 " + side.MoraleCap + "\uff0c\u5f53\u524d\u58eb\u6c14 " + side.Morale, 2.2f);
+        }
+
+        private static void OnGmBattleDrawCardsClicked()
+        {
+            if (_state == null || _battleMatchEnded || _isOnlineMode)
+            {
+                ToastUI.Show("\u65e0\u6cd5\u4f7f\u7528\uff08\u9700\u79bb\u7ebf\u5bf9\u5c40\uff09", 2f);
+                return;
+            }
+
+            if (_gmDrawCardsInput == null || !TryParseGmInt(_gmDrawCardsInput.text, out int n))
+            {
+                ToastUI.Show("\u8bf7\u8f93\u5165\u6574\u6570", 1.8f);
+                return;
+            }
+
+            if (n <= 0)
+            {
+                ToastUI.Show("\u8bf7\u8f93\u5165\u6b63\u6574\u6570", 1.8f);
+                return;
+            }
+
+            n = Mathf.Clamp(n, 1, 999);
+            int actual = BattleState.Draw(_state.Player, n);
+            RefreshAllFromState();
+            ToastUI.Show(
+                actual >= n
+                    ? "\u5df2\u62bd " + actual + " \u5f20\uff08\u724c\u5806\u5269 " + _state.Player.Deck.Count + "\uff09"
+                    : "\u5df2\u62bd " + actual + " \u5f20\uff08\u724c\u5806\u4e0e\u5f03\u724c\u4e0d\u8db3\uff0c\u5269\u4f59 " + (n - actual) + " \u672a\u62bd\uff09",
+                2.4f);
         }
 
         private static void OpenBattleSettingsPopup()
@@ -2357,11 +2389,6 @@ namespace JunzhenDuijue
             cRect.anchorMax = Vector2.one;
             cRect.offsetMin = new Vector2(18f, 16f);
             cRect.offsetMax = new Vector2(-18f, -40f);
-            var hlg = content.AddComponent<HorizontalLayoutGroup>();
-            hlg.spacing = 12f;
-            hlg.childAlignment = TextAnchor.MiddleCenter;
-            hlg.childControlWidth = hlg.childControlHeight = false;
-            hlg.childForceExpandWidth = hlg.childForceExpandHeight = false;
             _playedZoneContent = content.transform;
             _playedZoneRoot.AddComponent<PlayedZoneMarker>();
         }
@@ -2804,7 +2831,10 @@ namespace JunzhenDuijue
             }
         }
 
-        /// <summary>【江东猛虎】出牌阶段 End：先结算本阶段结束时士气+1，再询问己方是否消耗士气；联机或敌方跳过询问。</summary>
+        /// <summary>
+        /// 【江东猛虎】在<strong>本次攻击伤害结算完成之后</strong>（结算阶段 End、弃置打出区之前）：先恢复登记的士气，再询问己方是否打开士气技弹窗；联机或敌方跳过询问。
+        /// 顺序与「先伤害、后士气、再询问」一致，不在出牌阶段结束时触发。
+        /// </summary>
         public static void RunJiangDongMengHuPlayPhaseEndThen(BattleState state, bool playPhaseOwnerIsPlayer, System.Action continueAfter)
         {
             if (continueAfter == null)
@@ -3601,8 +3631,8 @@ namespace JunzhenDuijue
 
             string[] variantDescLines =
             {
-                "\u5bf9\u5b50\uff1a\u4f60\u9020\u62102\u70b9\u5175\u5203\u4f24\u5bb3\uff0c\u672c\u51fa\u724c\u9636\u6bb5\u7ed3\u675f\u65f6\u6062\u590d1\u70b9\u58eb\u6c14\u3002",
-                "\u4e24\u5bf9\uff1a\u4f60\u9020\u62106\u70b9\u5175\u5203\u4f24\u5bb3\uff0c\u672c\u51fa\u724c\u9636\u6bb5\u7ed3\u675f\u65f6\u6062\u590d1\u70b9\u58eb\u6c14\u3002",
+                "\u5bf9\u5b50\uff1a\u4f60\u9020\u62102\u70b9\u5175\u5203\u4f24\u5bb3\uff0c\u672c\u6b21\u653b\u51fb\u4f24\u5bb3\u7ed3\u7b97\u540e\u6062\u590d1\u70b9\u58eb\u6c14\u3002",
+                "\u4e24\u5bf9\uff1a\u4f60\u9020\u62106\u70b9\u5175\u5203\u4f24\u5bb3\uff0c\u672c\u6b21\u653b\u51fb\u4f24\u5bb3\u7ed3\u7b97\u540e\u6062\u590d1\u70b9\u58eb\u6c14\u3002",
             };
 
             for (int i = 0; i < 2; i++)
@@ -3705,7 +3735,10 @@ namespace JunzhenDuijue
             _state.PendingAttackPatternVariant = -1;
             var cards = _state.ActiveSide.PlayedThisPhase;
             bool canStraight = cards != null && SunCeStraightRules.IsValidSunCeDeclareShape(cards);
-            bool canFlush = cards != null && SunCeStraightRules.IsSunCeStraightFlush(cards);
+            bool canFlush = cards != null
+                && (cards.Count <= 5
+                    ? SunCeStraightRules.GetMaxStraightFlushSubsetLength(cards) >= 3
+                    : SunCeStraightRules.IsSunCeStraightFlush(cards));
 
             foreach (Transform child in _attackPatternContent)
                 UnityEngine.Object.Destroy(child.gameObject);
@@ -6355,6 +6388,8 @@ namespace JunzhenDuijue
 
         private const float HandContentWidthCompact = 404f;
         private const float HandCardWidthCompact = 72f;
+        private const float PlayedZoneDefaultCardSpacing = 12f;
+        private const float PlayedZoneLayoutWidthFallback = 760f;
         private const float HandBaseSpacing = -8f;
         private const float HandMinVisibleWidth = 24f;
         private const float HandCardStartX = 0f;
@@ -6508,6 +6543,69 @@ namespace JunzhenDuijue
             return HandCardStartX + cardWidth + (cardCount - 1) * step;
         }
 
+        /// <summary>出牌区：按内容区宽度压缩牌宽与间距，避免多张牌超出「出牌区域」底框。</summary>
+        private static void ApplyPlayedZoneLayout(int cardCount)
+        {
+            if (_playedZoneContent == null || cardCount <= 0)
+                return;
+
+            var rect = _playedZoneContent as RectTransform;
+            if (rect == null)
+                return;
+
+            if (_playedZoneRoot != null)
+            {
+                var rootRt = _playedZoneRoot.GetComponent<RectTransform>();
+                if (rootRt != null)
+                    LayoutRebuilder.ForceRebuildLayoutImmediate(rootRt);
+            }
+
+            float layoutCap = rect.rect.width;
+            if (layoutCap < 8f)
+                layoutCap = PlayedZoneLayoutWidthFallback;
+
+            float cardW = HandCardWidthCompact;
+            float cardH = HandCardHeightCompact;
+            if (cardCount > 1)
+            {
+                float naturalTotal = cardW + (cardCount - 1) * (cardW + PlayedZoneDefaultCardSpacing);
+                if (naturalTotal > layoutCap)
+                {
+                    float s = (layoutCap - 2f) / naturalTotal;
+                    s = Mathf.Clamp(s, 0.46f, 1f);
+                    cardW *= s;
+                    cardH *= s;
+                }
+            }
+
+            float step;
+            if (cardCount <= 1)
+                step = 0f;
+            else
+            {
+                float maxStep = (layoutCap - cardW) / (cardCount - 1);
+                float baseStep = cardW + PlayedZoneDefaultCardSpacing;
+                step = Mathf.Min(baseStep, maxStep);
+            }
+
+            float totalWidth = cardCount == 1 ? cardW : cardW + (cardCount - 1) * step;
+            float startX = (layoutCap - totalWidth) * 0.5f;
+
+            for (int i = 0; i < cardCount && i < _playedZoneContent.childCount; i++)
+            {
+                var childRt = _playedZoneContent.GetChild(i) as RectTransform;
+                if (childRt == null)
+                    continue;
+                childRt.anchorMin = new Vector2(0f, 0.5f);
+                childRt.anchorMax = new Vector2(0f, 0.5f);
+                childRt.pivot = new Vector2(0f, 0.5f);
+                childRt.sizeDelta = new Vector2(cardW, cardH);
+                childRt.anchoredPosition = new Vector2(startX + i * step, 0f);
+            }
+
+            LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
+        }
+
         private static Sprite _cardBackSprite;
         private static Sprite GetCardBackSprite()
         {
@@ -6604,17 +6702,12 @@ namespace JunzhenDuijue
 
             var playedCards = _state.ActiveSide.PlayedThisPhase;
             bool canReturnToHand = _state.IsPlayerTurn && _state.CurrentPhase == BattlePhase.Main && _state.CurrentPhaseStep == PhaseStep.Main;
-            float cardW = HandCardWidthCompact;
-            float cardH = HandCardHeightCompact;
             for (int i = 0; i < playedCards.Count; i++)
             {
                 int playedIndex = i;
                 var pc = playedCards[i];
                 var go = new GameObject("PlayedCard_" + playedIndex);
                 go.transform.SetParent(_playedZoneContent, false);
-                var le = go.AddComponent<LayoutElement>();
-                le.preferredWidth = cardW;
-                le.preferredHeight = cardH;
                 var rootImage = go.AddComponent<Image>();
                 rootImage.color = Color.clear;
                 rootImage.raycastTarget = canReturnToHand;
@@ -6714,6 +6807,8 @@ namespace JunzhenDuijue
                     btn.onClick.AddListener(() => ReturnPlayedCardToHand(playedIndex));
                 }
             }
+
+            ApplyPlayedZoneLayout(playedCards.Count);
         }
 
         private static void ReturnPlayedCardToHand(int playedIndex)
@@ -6725,6 +6820,7 @@ namespace JunzhenDuijue
                 return;
             }
             if (playedIndex < 0 || playedIndex >= _state.Player.PlayedThisPhase.Count) return;
+            int countBefore = _state.Player.PlayedThisPhase.Count;
             var card = _state.Player.PlayedThisPhase[playedIndex];
             _state.Player.PlayedThisPhase.RemoveAt(playedIndex);
             if (!card.PlayedAsGeneral)
@@ -6732,7 +6828,38 @@ namespace JunzhenDuijue
                 card.ChaShiCourtPlayedAsTen = false;
                 _state.Player.Hand.Add(card);
             }
+
+            TrySunCeZhuandouAutoTakeBackLastAfterUndoFromSevenToSix(countBefore);
             RefreshAllFromState();
+        }
+
+        /// <summary>
+        /// 【转斗千里】第 6 张起须整叠合法；从 7 张撤销任意一张后若剩 6 张，可能破坏「逐步追加」路径（例如撤掉中间牌）。
+        /// 此时再从<strong>打出序末尾</strong>自动收回一张，使打出区回到至多 5 张，避免利用非法 6 张过渡态继续打牌。
+        /// </summary>
+        private static void TrySunCeZhuandouAutoTakeBackLastAfterUndoFromSevenToSix(int playedCountBeforeUndo)
+        {
+            if (_state == null || _isOnlineMode)
+                return;
+            if (!OfflineSkillEngine.SideHasFaceUpSunCeZhuandou(_state, true))
+                return;
+            if (playedCountBeforeUndo != 7 || _state.Player.PlayedThisPhase.Count != 6)
+                return;
+
+            int last = _state.Player.PlayedThisPhase.Count - 1;
+            if (last < 0)
+                return;
+            var tail = _state.Player.PlayedThisPhase[last];
+            _state.Player.PlayedThisPhase.RemoveAt(last);
+            if (!tail.PlayedAsGeneral)
+            {
+                tail.ChaShiCourtPlayedAsTen = false;
+                _state.Player.Hand.Add(tail);
+            }
+
+            ToastUI.Show(
+                "\u3010\u8f6c\u6597\u5343\u91cc\u3011\u5df2\u4ece\u6253\u51fa\u533a\u518d\u6536\u56de\u672b\u5f20\uff08\u907f\u514d\u975e\u6cd5\u516d\u5f20\u8fc7\u6e21\u6001\uff09",
+                2.4f);
         }
 
         private static bool SunCeAllowsAppendForActivePlayer(PokerCard cardToAdd)

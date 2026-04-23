@@ -612,7 +612,7 @@ namespace JunzhenDuijue
                     }
 
                     OnPlayPhaseEnd?.Invoke(attackerIsPlayer);
-                    GameUI.RunJiangDongMengHuPlayPhaseEndThen(_state, attackerIsPlayer, () =>
+                    void continueAfterPlayPhaseMainEnd()
                     {
                         if (_state == null)
                             return;
@@ -651,7 +651,9 @@ namespace JunzhenDuijue
                         }
 
                         AdvanceFromPlayPhase();
-                    });
+                    }
+
+                    continueAfterPlayPhaseMainEnd();
                     return;
 
                 case BattlePhase.Defense:
@@ -746,8 +748,13 @@ namespace JunzhenDuijue
             }
 
                     OnResolveEnd?.Invoke(attackerIsPlayer);
-                    _state.FinishCurrentPlayPhaseCombat();
-                    AdvanceFromPlayPhase();
+                    GameUI.RunJiangDongMengHuPlayPhaseEndThen(_state, attackerIsPlayer, () =>
+                    {
+                        if (_state == null)
+                            return;
+                        _state.FinishCurrentPlayPhaseCombat();
+                        AdvanceFromPlayPhase();
+                    });
                     return;
 
                 case BattlePhase.Discard:

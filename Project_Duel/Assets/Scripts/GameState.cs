@@ -330,7 +330,7 @@ namespace JunzhenDuijue
         /// </summary>
         public int PendingPreResistFlatMitigation;
 
-        /// <summary>【江东猛虎】在当前出牌阶段结束时待恢复的士气（与 <see cref="PendingSunJianMoraleRestorePlayPhaseIndex"/> 一致时于 End 结算）。</summary>
+        /// <summary>【江东猛虎】在本次攻击<strong>伤害结算后</strong>待恢复的士气（与 <see cref="PendingSunJianMoraleRestorePlayPhaseIndex"/> 一致时处理）。</summary>
         public int PendingSunJianMoraleRestoreAmount;
 
         /// <summary>【江东猛虎】登记时的 <see cref="CurrentPlayPhaseIndex"/>；仅在该索引的出牌阶段 End 时结算士气。</summary>
