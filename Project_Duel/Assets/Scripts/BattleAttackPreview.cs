@@ -17,6 +17,7 @@ namespace JunzhenDuijue
             public List<PokerCard> PlayedBackup;
             public int PendingBaseDamage;
             public int PendingAttackBonus;
+            public int PendingReservedAttackerIndicatorBonus;
             public bool PendingIgnoreDefenseReduction;
             public int PendingPostResolveDrawToAttacker;
             public int PendingPostResolveHealToAttacker;
@@ -26,6 +27,8 @@ namespace JunzhenDuijue
             public int PendingExtraPlayPhasesToGrant;
             public int PendingAttackPatternVariant;
             public int PendingCeMaBannerShapeKind;
+            public int PendingJiangDongMenghuBannerKind;
+            public int PendingSunCeZhuandouBannerKind;
             public SelectedSkillKind PendingAttackSkillKind;
             public int PendingGenericAttackOptionIndex;
             public bool PendingGenericAttackShapeChoicePending;
@@ -33,6 +36,10 @@ namespace JunzhenDuijue
             public DamageCategory PendingDamageCategory;
             public DamageElement PendingDamageElement;
             public bool HuBuGuanYouWindowConsumedForCurrentAttack;
+            public bool HubJuYingYangWindowConsumedForCurrentAttack;
+            public int PendingSunJianMoraleRestoreAmount;
+            public int PendingSunJianMoraleRestorePlayPhaseIndex;
+            public bool PendingSunJianMoraleRestoreForSideIsPlayer;
         }
 
         private static Snapshot Capture(BattleState state)
@@ -42,6 +49,7 @@ namespace JunzhenDuijue
                 PlayedBackup = new List<PokerCard>(state.ActiveSide.PlayedThisPhase),
                 PendingBaseDamage = state.PendingBaseDamage,
                 PendingAttackBonus = state.PendingAttackBonus,
+                PendingReservedAttackerIndicatorBonus = state.PendingReservedAttackerIndicatorBonus,
                 PendingIgnoreDefenseReduction = state.PendingIgnoreDefenseReduction,
                 PendingPostResolveDrawToAttacker = state.PendingPostResolveDrawToAttacker,
                 PendingPostResolveHealToAttacker = state.PendingPostResolveHealToAttacker,
@@ -51,6 +59,8 @@ namespace JunzhenDuijue
                 PendingExtraPlayPhasesToGrant = state.PendingExtraPlayPhasesToGrant,
                 PendingAttackPatternVariant = state.PendingAttackPatternVariant,
                 PendingCeMaBannerShapeKind = state.PendingCeMaBannerShapeKind,
+                PendingJiangDongMenghuBannerKind = state.PendingJiangDongMenghuBannerKind,
+                PendingSunCeZhuandouBannerKind = state.PendingSunCeZhuandouBannerKind,
                 PendingAttackSkillKind = state.PendingAttackSkillKind,
                 PendingGenericAttackOptionIndex = state.PendingGenericAttackOptionIndex,
                 PendingGenericAttackShapeChoicePending = state.PendingGenericAttackShapeChoicePending,
@@ -58,6 +68,10 @@ namespace JunzhenDuijue
                 PendingDamageCategory = state.PendingDamageCategory,
                 PendingDamageElement = state.PendingDamageElement,
                 HuBuGuanYouWindowConsumedForCurrentAttack = state.HuBuGuanYouWindowConsumedForCurrentAttack,
+                HubJuYingYangWindowConsumedForCurrentAttack = state.HubJuYingYangWindowConsumedForCurrentAttack,
+                PendingSunJianMoraleRestoreAmount = state.PendingSunJianMoraleRestoreAmount,
+                PendingSunJianMoraleRestorePlayPhaseIndex = state.PendingSunJianMoraleRestorePlayPhaseIndex,
+                PendingSunJianMoraleRestoreForSideIsPlayer = state.PendingSunJianMoraleRestoreForSideIsPlayer,
             };
             return snap;
         }
@@ -68,6 +82,7 @@ namespace JunzhenDuijue
             state.ActiveSide.PlayedThisPhase.AddRange(snap.PlayedBackup);
             state.PendingBaseDamage = snap.PendingBaseDamage;
             state.PendingAttackBonus = snap.PendingAttackBonus;
+            state.PendingReservedAttackerIndicatorBonus = snap.PendingReservedAttackerIndicatorBonus;
             state.PendingIgnoreDefenseReduction = snap.PendingIgnoreDefenseReduction;
             state.PendingPostResolveDrawToAttacker = snap.PendingPostResolveDrawToAttacker;
             state.PendingPostResolveHealToAttacker = snap.PendingPostResolveHealToAttacker;
@@ -77,6 +92,8 @@ namespace JunzhenDuijue
             state.PendingExtraPlayPhasesToGrant = snap.PendingExtraPlayPhasesToGrant;
             state.PendingAttackPatternVariant = snap.PendingAttackPatternVariant;
             state.PendingCeMaBannerShapeKind = snap.PendingCeMaBannerShapeKind;
+            state.PendingJiangDongMenghuBannerKind = snap.PendingJiangDongMenghuBannerKind;
+            state.PendingSunCeZhuandouBannerKind = snap.PendingSunCeZhuandouBannerKind;
             state.PendingAttackSkillKind = snap.PendingAttackSkillKind;
             state.PendingGenericAttackOptionIndex = snap.PendingGenericAttackOptionIndex;
             state.PendingGenericAttackShapeChoicePending = snap.PendingGenericAttackShapeChoicePending;
@@ -84,6 +101,10 @@ namespace JunzhenDuijue
             state.PendingDamageCategory = snap.PendingDamageCategory;
             state.PendingDamageElement = snap.PendingDamageElement;
             state.HuBuGuanYouWindowConsumedForCurrentAttack = snap.HuBuGuanYouWindowConsumedForCurrentAttack;
+            state.HubJuYingYangWindowConsumedForCurrentAttack = snap.HubJuYingYangWindowConsumedForCurrentAttack;
+            state.PendingSunJianMoraleRestoreAmount = snap.PendingSunJianMoraleRestoreAmount;
+            state.PendingSunJianMoraleRestorePlayPhaseIndex = snap.PendingSunJianMoraleRestorePlayPhaseIndex;
+            state.PendingSunJianMoraleRestoreForSideIsPlayer = snap.PendingSunJianMoraleRestoreForSideIsPlayer;
         }
 
         /// <summary>数值越大越好：优先总伤，其次额外阶段、摸牌、恢复等。</summary>
@@ -113,7 +134,7 @@ namespace JunzhenDuijue
                     state.PendingGenericAttackShapeChoicePending = false;
                     OfflineSkillEngine.ConfigureAttackSkill(state, attackerIsPlayer, -1, -1);
                     int tp1 = state.TotalPlayPhasesThisTurn + state.PendingExtraPlayPhasesToGrant;
-                    int totalHit = state.PendingBaseDamage + state.PendingAttackBonus;
+                    int totalHit = state.PendingBaseDamage + state.PendingAttackBonus + state.PendingReservedAttackerIndicatorBonus;
                     long sc = (long)totalHit * 10000L
                         + (tp1 - tp0) * 800L
                         + state.PendingPostResolveDrawToAttacker * 250L
@@ -149,12 +170,13 @@ namespace JunzhenDuijue
             state.PendingAttackSkillKind = SelectedSkillKind.GeneralSkill;
             OfflineSkillEngine.ConfigureAttackSkill(state, attackerIsPlayer, generalIndex, skillIndex);
             int tp1g = state.TotalPlayPhasesThisTurn + state.PendingExtraPlayPhasesToGrant;
-            int totalHitG = state.PendingBaseDamage + state.PendingAttackBonus;
+            int totalHitG = state.PendingBaseDamage + state.PendingAttackBonus + state.PendingReservedAttackerIndicatorBonus;
             long scoreG = (long)totalHitG * 10000L
                 + (tp1g - tp0g) * 800L
                 + state.PendingPostResolveDrawToAttacker * 250L
                 + state.PendingPostResolveHealToAttacker * 180L
                 + state.PendingPostResolveMoraleToAttacker * 150L
+                + state.PendingSunJianMoraleRestoreAmount * 120L
                 + (state.PendingIgnoreDefenseReduction ? 600L : 0L);
 
             Restore(state, snap);
@@ -206,7 +228,8 @@ namespace JunzhenDuijue
             if (n <= 0)
                 return;
 
-            int maxK = Mathf.Min(BattleState.MaxPlayPerPhase, n);
+            int playCap = OfflineSkillEngine.GetMaxNonGeneralPlayCapForSide(state, attackerIsPlayer);
+            int maxK = Mathf.Min(playCap, n);
             long bestScore = long.MinValue;
             int bestK = 999;
 

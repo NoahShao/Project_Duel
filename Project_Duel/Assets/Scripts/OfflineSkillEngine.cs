@@ -10,6 +10,7 @@ namespace JunzhenDuijue
 
         private const string StartGameEffectId = "start_game_gain_morale_and_max";
         public const string EmptyHandDrawTwoOncePerTurnEffectId = "empty_hand_draw_two_once_per_turn";
+        /// <remarks>EffectId 为 <c>play_phase_start_...</c>；在「任意出牌阶段开始时」由 <see cref="GameUI.RunPlayPhaseStartPromptsThen"/> 触发，且与同节点另一方据守按先后手顺序结算。</remarks>
         private const string PlayPhaseStartResistEffectId = "play_phase_start_pay_morale_gain_resist";
         private const string ManualPrimaryEffectId = "manual_primary_effect";
         private const string DiscardEndRenZheWuDiEffectId = "discard_end_draw_reveal_red_heal_black_damage";
@@ -22,6 +23,15 @@ namespace JunzhenDuijue
 
         /// <summary>【虎步关右】在技能规则表中的 EffectId。</summary>
         public const string HuBuGuanYouEffectId = "attack_discard_black_gain_extra_phase";
+
+        /// <summary>【江东猛虎】孙坚攻击技：对子/两对兵刃伤害，出牌阶段结束时恢复士气（见 <see cref="GameUI.RunJiangDongMengHuPlayPhaseEndThen"/>）。</summary>
+        public const string AttackJiangdongMengHuEffectId = "attack_pair_restore_morale_end_phase";
+
+        /// <summary>【孙策·转斗千里】规则表 EffectId。</summary>
+        public const string AttackSunCeZhuandouEffectId = "attack_damage_by_straight_length";
+
+        /// <summary>【孙策·虎踞鹰扬】规则表 EffectId。</summary>
+        public const string AttackSunCeHubJuEffectId = "attack_pay_morale_bonus_damage";
 
         /// <summary>【八门金锁】翻开牌库顶，小点数减伤否则入手牌。</summary>
         public const string DefenseRevealSmall8ReduceElseGainEffectId = "defense_reveal_small8_reduce2_else_draw";
@@ -42,7 +52,7 @@ namespace JunzhenDuijue
         }
 
         /// <summary>
-        /// 「结算使用攻击技造成的伤害时」：在防御技等登记的减伤与抵御等已从本次伤害中扣减之后，再叠加【长吼】加伤（不再受防御技/抵御影响）。
+        /// 「结算使用攻击技造成的伤害时」：在 <see cref="BattleState.PendingPreResistFlatMitigation"/>、抵御减半与防御技登记减伤均已结算之后，再叠加【长吼】加伤（不再受上述减免影响）。与宣言节点【虎踞鹰扬】写入 <see cref="BattleState.PendingAttackBonus"/> 的加伤分离。
         /// </summary>
         public static int GetChangHouBonusWhenResolvingAttackDamage(BattleState state)
         {
@@ -314,7 +324,7 @@ namespace JunzhenDuijue
                 return;
             if (!HasRemovableDefenseBuff(state, false))
                 return;
-            int raw = Mathf.Max(0, state.PendingBaseDamage + state.PendingAttackBonus);
+            int raw = Mathf.Max(0, state.PendingBaseDamage + state.PendingAttackBonus + state.PendingReservedAttackerIndicatorBonus);
             if (raw < 4)
                 return;
             if (UnityEngine.Random.value > 0.45f)
@@ -572,10 +582,12 @@ namespace JunzhenDuijue
                 return;
 
             state.HuBuGuanYouWindowConsumedForCurrentAttack = false;
+            state.HubJuYingYangWindowConsumedForCurrentAttack = false;
             state.PendingBaseDamage = 0;
             state.PendingDamageCategory = DamageCategory.None;
             state.PendingDamageElement = DamageElement.None;
             state.PendingAttackBonus = 0;
+            state.PendingReservedAttackerIndicatorBonus = 0;
             state.PendingIgnoreDefenseReduction = false;
             state.PendingPostResolveDrawToAttacker = 0;
             state.PendingPostResolveHealToAttacker = 0;
@@ -583,13 +595,16 @@ namespace JunzhenDuijue
             state.PendingExtraPlayPhasesToGrant = 0;
             state.PendingCombatNote = string.Empty;
             state.PendingCeMaBannerShapeKind = -1;
+            state.PendingJiangDongMenghuBannerKind = -1;
+            state.PendingSunCeZhuandouBannerKind = -1;
+            ClearJiangdongMengHuMoralePending(state);
 
             if (!TryGetFaceUpRule(state, attackerIsPlayer, generalIndex, skillIndex, out string cardId, out _))
             {
                 GenericAttackShapes.ApplyGenericAttack(state, state.ActiveSide.PlayedThisPhase, attackerIsPlayer);
                 state.PendingAttackSkillKind = SelectedSkillKind.GenericAttack;
                 state.PendingAttackSkillName = "\u901a\u7528\u653b\u51fb";
-                TryShowAttackDeclareBanner(state, attackerIsPlayer, afterAttackDeclareBanner);
+                OfferHubJuYingYangIfEligibleThen(state, attackerIsPlayer, () => TryShowAttackDeclareBanner(state, attackerIsPlayer, afterAttackDeclareBanner));
                 return;
             }
 
@@ -609,6 +624,12 @@ namespace JunzhenDuijue
                     case "NO005_0":
                         handled = ConfigureYuanShuLianZhu(state, attackerIsPlayer, cards);
                         break;
+                    case "NO007_0":
+                        handled = TryConfigureJiangDongMengHu(state, attackerIsPlayer, cards, generalIndex, skillIndex);
+                        break;
+                    case "NO008_0":
+                        handled = TryConfigureZhuandouQianLi(state, attackerIsPlayer, cards, generalIndex, skillIndex);
+                        break;
                 }
             }
 
@@ -624,12 +645,21 @@ namespace JunzhenDuijue
                 }
             }
 
-            TryShowAttackDeclareBanner(state, attackerIsPlayer, afterAttackDeclareBanner);
+            OfferHubJuYingYangIfEligibleThen(state, attackerIsPlayer, () => TryShowAttackDeclareBanner(state, attackerIsPlayer, afterAttackDeclareBanner));
         }
 
         /// <returns>若 true，表示防御宣告的战报与横幅需延后到 <see cref="GameUI.BeginBamenJinsuoChaShiResolve"/> 察势完成后再走 <see cref="BattlePhaseManager.CompleteDefenseDeclareAfterDeferredBamen"/>。</returns>
-        public static bool ConfigureDefenseSkill(BattleState state, bool defenderIsPlayer, int generalIndex, int skillIndex)
+        /// <param name="onAfterBamenOutcomeBanner">【八门金锁】结算结果横幅结束（或未展示横幅）后调用；用于衔接防御宣告横幅/自动结束防御。</param>
+        /// <param name="defenseDeclareUiChainedToBamenOutcomeToast">为 true 时调用方不应再立刻调用防御宣告横幅（已挂到八门结算横幅之后）。</param>
+        public static bool ConfigureDefenseSkill(
+            BattleState state,
+            bool defenderIsPlayer,
+            int generalIndex,
+            int skillIndex,
+            Action onAfterBamenOutcomeBanner,
+            out bool defenseDeclareUiChainedToBamenOutcomeToast)
         {
+            defenseDeclareUiChainedToBamenOutcomeToast = false;
             if (state == null)
                 return false;
 
@@ -642,7 +672,7 @@ namespace JunzhenDuijue
             }
 
             if (string.Equals(rule.EffectId, DefenseRevealSmall8ReduceElseGainEffectId, StringComparison.Ordinal))
-                return ApplyDefenseBamenJinsuo(state, defenderIsPlayer, cardId, rule);
+                return ApplyDefenseBamenJinsuo(state, defenderIsPlayer, cardId, rule, onAfterBamenOutcomeBanner, out defenseDeclareUiChainedToBamenOutcomeToast);
 
             state.PendingDefenseReduction = Mathf.Max(state.PendingDefenseReduction, 1);
             AppendCombatNote(state, "\u9632\u5fa1\u6280\u9ed8\u8ba4\u51cf\u4f24+1");
@@ -650,9 +680,10 @@ namespace JunzhenDuijue
         }
 
         /// <summary>【八门金锁】在翻出牌并已确定察势（若需）后，按比对点数入弃牌/手牌并更新减伤与战报。</summary>
-        public static void FinishBamenJinsuoAfterReveal(BattleState state, bool defenderIsPlayer, PokerCard revealed, string cardId, SkillRuleEntry rule, int capRank, int bonusReduce)
+        /// <param name="onAfterOutcomeBanner">在结算结果技能横幅结束（或未展示横幅）后调用；用于衔接防御宣告与自动结束防御。</param>
+        public static void FinishBamenJinsuoAfterReveal(BattleState state, bool defenderIsPlayer, PokerCard revealed, string cardId, SkillRuleEntry rule, int capRank, int bonusReduce, Action onAfterOutcomeBanner = null)
         {
-            if (state == null || revealed == null)
+            if (state == null)
                 return;
 
             state.PendingDefenseBamenReveal = null;
@@ -667,21 +698,32 @@ namespace JunzhenDuijue
                 state.PendingDefenseReduction = Mathf.Max(state.PendingDefenseReduction, bonusReduce);
                 string outcome = "\u7ffb\u5f00\u724c\u5e93\u9876\u3010" + cardLabel + "\u3011\uff08\u5c0f" + capRank + "\u70b9\u5224\u5b9a\uff1a\u8ba1\u4f5c" + eff + "\u70b9\uff09\uff0c\u672c\u6b21\u53d7\u5230\u7684\u4f24\u5bb3-" + bonusReduce;
                 AppendCombatNote(state, "\u3010\u516b\u95e8\u91d1\u9501\u3011" + outcome);
-                if (!BattleAttackPreview.SuppressSkillBanners)
-                    SkillEffectBanner.Show(defenderIsPlayer, true, SkillEffectBanner.GetRoleNameFromCardId(cardId), skillName, outcome);
+                if (BattleAttackPreview.SuppressSkillBanners)
+                    onAfterOutcomeBanner?.Invoke();
+                else
+                    SkillEffectBanner.Show(defenderIsPlayer, true, SkillEffectBanner.GetRoleNameFromCardId(cardId), skillName, outcome, onAfterOutcomeBanner);
             }
             else
             {
                 defSide.Hand.Add(revealed);
                 string outcome = "\u7ffb\u5f00\u724c\u5e93\u9876\u3010" + cardLabel + "\u3011\uff08\u5c0f" + capRank + "\u70b9\u5224\u5b9a\uff1a\u8ba1\u4f5c" + eff + "\u70b9\uff09\uff0c\u83b7\u5f97\u8be5\u724c";
                 AppendCombatNote(state, "\u3010\u516b\u95e8\u91d1\u9501\u3011" + outcome);
-                if (!BattleAttackPreview.SuppressSkillBanners)
-                    SkillEffectBanner.Show(defenderIsPlayer, true, SkillEffectBanner.GetRoleNameFromCardId(cardId), skillName, outcome);
+                if (BattleAttackPreview.SuppressSkillBanners)
+                    onAfterOutcomeBanner?.Invoke();
+                else
+                    SkillEffectBanner.Show(defenderIsPlayer, true, SkillEffectBanner.GetRoleNameFromCardId(cardId), skillName, outcome, onAfterOutcomeBanner);
             }
         }
 
-        private static bool ApplyDefenseBamenJinsuo(BattleState state, bool defenderIsPlayer, string cardId, SkillRuleEntry rule)
+        private static bool ApplyDefenseBamenJinsuo(
+            BattleState state,
+            bool defenderIsPlayer,
+            string cardId,
+            SkillRuleEntry rule,
+            Action onAfterBamenOutcomeBanner,
+            out bool defenseDeclareUiChainedToBamenOutcomeToast)
         {
+            defenseDeclareUiChainedToBamenOutcomeToast = false;
             var defSide = state.GetSide(defenderIsPlayer);
             state.PendingDefenseReduction = Mathf.Max(state.PendingDefenseReduction, 1);
             if (!BattleState.TryPopTopDeckCardForReveal(defSide, out PokerCard revealed))
@@ -705,7 +747,8 @@ namespace JunzhenDuijue
             if (needsChaShi)
                 revealed.ChaShiCourtPlayedAsTen = false;
 
-            FinishBamenJinsuoAfterReveal(state, defenderIsPlayer, revealed, cardId, rule, capRank, bonusReduce);
+            FinishBamenJinsuoAfterReveal(state, defenderIsPlayer, revealed, cardId, rule, capRank, bonusReduce, onAfterBamenOutcomeBanner);
+            defenseDeclareUiChainedToBamenOutcomeToast = onAfterBamenOutcomeBanner != null;
             return false;
         }
 
@@ -867,6 +910,283 @@ namespace JunzhenDuijue
                 line.Append("\uff1b\u7ed3\u7b97\u540e\u58eb\u6c14+").Append(state.PendingPostResolveMoraleToAttacker);
             if (state.PendingIgnoreDefenseReduction)
                 line.Append("\uff1b\u672c\u6b21\u4e0d\u53ef\u9632\u5fa1\u51cf\u4f24");
+            if (state.PendingSunJianMoraleRestoreAmount > 0)
+                line.Append("\uff1b\u672c\u51fa\u724c\u9636\u6bb5\u7ed3\u675f\u65f6\u58eb\u6c14+").Append(state.PendingSunJianMoraleRestoreAmount);
+        }
+
+        private static void ClearJiangdongMengHuMoralePending(BattleState state)
+        {
+            if (state == null)
+                return;
+            state.PendingSunJianMoraleRestoreAmount = 0;
+            state.PendingSunJianMoraleRestorePlayPhaseIndex = -1;
+        }
+
+        /// <summary>出牌阶段 End 已结算【江东猛虎】士气后清除登记（由 <see cref="GameUI.RunJiangDongMengHuPlayPhaseEndThen"/> 调用）。</summary>
+        public static void ClearPendingSunJianMoraleRestoreAfterResolved(BattleState state) => ClearJiangdongMengHuMoralePending(state);
+
+        private static bool SunJianPlayedIsPair(List<PokerCard> cards) =>
+            cards != null
+            && cards.Count == 2
+            && PokerPatternRules.GetComparisonPoint(cards[0]) == PokerPatternRules.GetComparisonPoint(cards[1]);
+
+        private static bool SunJianPlayedIsTwoPair(List<PokerCard> cards) =>
+            cards != null && cards.Count == 4 && PokerPatternRules.IsTwoPairCompositeFour(cards);
+
+        private static bool TryConfigureJiangDongMengHu(BattleState state, bool attackerIsPlayer, List<PokerCard> cards, int generalIndex, int skillIndex)
+        {
+            if (state == null || cards == null)
+                return false;
+            if (!TryGetFaceUpRule(state, attackerIsPlayer, generalIndex, skillIndex, out _, out SkillRuleEntry rule) || rule == null)
+                return false;
+            if (!string.Equals(rule.EffectId, AttackJiangdongMengHuEffectId, StringComparison.Ordinal))
+                return false;
+
+            int variant = state.PendingAttackPatternVariant;
+            if (variant < 0)
+                AutoPickJiangDongMenghuVariant(state, cards);
+            variant = state.PendingAttackPatternVariant;
+            state.PendingAttackPatternVariant = -1;
+
+            int damage;
+            string shapeLabel;
+            if (variant == 1)
+            {
+                if (!SunJianPlayedIsTwoPair(cards))
+                    return false;
+                damage = 6;
+                shapeLabel = "\u4e24\u5bf9";
+                state.PendingJiangDongMenghuBannerKind = 1;
+            }
+            else if (variant == 0)
+            {
+                if (!SunJianPlayedIsPair(cards))
+                    return false;
+                damage = 2;
+                shapeLabel = "\u5bf9\u5b50";
+                state.PendingJiangDongMenghuBannerKind = 0;
+            }
+            else
+                return false;
+
+            int moraleRestore = Mathf.Max(0, rule.Value1);
+            state.PendingBaseDamage = damage;
+            state.PendingDamageCategory = DamageCategory.Blade;
+            state.PendingDamageElement = DamageElement.None;
+            state.PendingSunJianMoraleRestoreAmount = moraleRestore;
+            state.PendingSunJianMoraleRestorePlayPhaseIndex = state.CurrentPlayPhaseIndex;
+            state.PendingSunJianMoraleRestoreForSideIsPlayer = attackerIsPlayer;
+            state.PendingAttackSkillKind = SelectedSkillKind.GeneralSkill;
+            AppendCombatNote(
+                state,
+                "\u3010\u6c5f\u4e1c\u731b\u864e\u3011" + shapeLabel + "\uff0c" + damage + "\u70b9\u5175\u5203\u4f24\u5bb3\uff0c\u672c\u51fa\u724c\u9636\u6bb5\u7ed3\u675f\u65f6\u58eb\u6c14+" + moraleRestore);
+            return true;
+        }
+
+        /// <summary>敌方 AI 等：两对优先于对子。</summary>
+        public static void AutoPickJiangDongMenghuVariant(BattleState state, List<PokerCard> cards)
+        {
+            if (state == null || cards == null)
+                return;
+            if (SunJianPlayedIsTwoPair(cards))
+                state.PendingAttackPatternVariant = 1;
+            else if (SunJianPlayedIsPair(cards))
+                state.PendingAttackPatternVariant = 0;
+        }
+
+        public static bool JiangDongMenghuPlayedMatchesPair(List<PokerCard> cards) => SunJianPlayedIsPair(cards);
+
+        public static bool JiangDongMenghuPlayedMatchesTwoPair(List<PokerCard> cards) => SunJianPlayedIsTwoPair(cards);
+
+        public static string DescribeJiangDongMenghuShapeForBanner(BattleState state)
+        {
+            if (state == null)
+                return string.Empty;
+            return state.PendingJiangDongMenghuBannerKind switch
+            {
+                1 => "\u4e24\u5bf9",
+                0 => "\u5bf9\u5b50",
+                _ => string.Empty,
+            };
+        }
+
+        private static bool TryConfigureZhuandouQianLi(BattleState state, bool attackerIsPlayer, List<PokerCard> cards, int generalIndex, int skillIndex)
+        {
+            if (state == null || cards == null)
+                return false;
+            if (!TryGetFaceUpRule(state, attackerIsPlayer, generalIndex, skillIndex, out _, out SkillRuleEntry rule) || rule == null)
+                return false;
+            if (!string.Equals(rule.EffectId, AttackSunCeZhuandouEffectId, StringComparison.Ordinal))
+                return false;
+
+            if (!SunCeStraightRules.IsValidSunCeDeclareShape(cards))
+            {
+                state.PendingSunCeZhuandouBannerKind = -1;
+                state.PendingBaseDamage = 0;
+                state.PendingDamageCategory = DamageCategory.Blade;
+                state.PendingDamageElement = DamageElement.None;
+                state.PendingAttackSkillKind = SelectedSkillKind.GeneralSkill;
+                AppendCombatNote(state, "\u3010\u8f6c\u6597\u5343\u91cc\u3011\u6253\u51fa\u724c\u4e0d\u6ee1\u8db3\u81ea\u7531\u987a\u5b50/\u81ea\u7531\u540c\u82b1\u987a\uff0c\u672c\u6b21\u627f\u8ba4\u4f24\u5bb3\u4e3a0");
+                return true;
+            }
+
+            int variant = state.PendingAttackPatternVariant;
+            if (variant < 0)
+                AutoPickSunCeZhuandouVariant(state, cards);
+            variant = state.PendingAttackPatternVariant;
+            state.PendingAttackPatternVariant = -1;
+
+            bool declareFlush = variant == 1;
+            if (declareFlush && !SunCeStraightRules.IsSunCeStraightFlush(cards))
+                declareFlush = false;
+
+            int len = cards.Count;
+            state.PendingBaseDamage = len;
+            state.PendingDamageCategory = DamageCategory.Blade;
+            state.PendingDamageElement = DamageElement.None;
+            state.PendingAttackSkillKind = SelectedSkillKind.GeneralSkill;
+            state.PendingSunCeZhuandouBannerKind = declareFlush ? 1 : 0;
+            if (declareFlush)
+                state.PendingPostResolveHealToAttacker += len;
+
+            string shape = declareFlush ? "\u81ea\u7531\u540c\u82b1\u987a" : "\u81ea\u7531\u987a\u5b50";
+            AppendCombatNote(
+                state,
+                "\u3010\u8f6c\u6597\u5343\u91cc\u3011" + shape + "\uff08" + len + "\u5f20\uff09\uff0c" + len + "\u70b9\u5175\u5203\u4f24\u5bb3"
+                + (declareFlush ? "\uff0c\u7ed3\u7b97\u540e\u6062\u590d" + len + "\u70b9\u751f\u547d" : string.Empty));
+            return true;
+        }
+
+        /// <summary>敌方 AI：能宣言同花顺则取同花顺，否则取自由顺子。</summary>
+        public static void AutoPickSunCeZhuandouVariant(BattleState state, List<PokerCard> cards)
+        {
+            if (state == null || cards == null)
+                return;
+            state.PendingAttackPatternVariant = SunCeStraightRules.IsSunCeStraightFlush(cards) ? 1 : 0;
+        }
+
+        public static string DescribeSunCeZhuandouShapeForBanner(BattleState state, IReadOnlyList<PokerCard> played)
+        {
+            if (played == null || played.Count < 3 || state == null)
+                return string.Empty;
+            return state.PendingSunCeZhuandouBannerKind switch
+            {
+                1 => "\u81ea\u7531\u540c\u82b1\u987a\uff08" + played.Count + "\u5f20\uff09",
+                0 => "\u81ea\u7531\u987a\u5b50\uff08" + played.Count + "\u5f20\uff09",
+                _ => string.Empty,
+            };
+        }
+
+        /// <summary>场上该方是否有翻面可见的【转斗千里】。</summary>
+        public static bool SideHasFaceUpSunCeZhuandou(BattleState state, bool sideIsPlayer) =>
+            state != null
+            && TryFindFaceUpRule(
+                state,
+                sideIsPlayer,
+                e => string.Equals(e.CardId, "NO008", StringComparison.Ordinal)
+                    && e.SkillIndex == 0
+                    && string.Equals(e.EffectId, AttackSunCeZhuandouEffectId, StringComparison.Ordinal),
+                out _,
+                out _,
+                out _,
+                out _);
+
+        public static int GetMaxNonGeneralPlayCapForSide(BattleState state, bool sideIsPlayer) =>
+            state != null && SideHasFaceUpSunCeZhuandou(state, sideIsPlayer) ? BattleState.SunCeMaxNonGeneralPlayCap : BattleState.MaxPlayPerPhase;
+
+        private static bool TryFindSunCeHubJuRule(BattleState state, bool attackerIsPlayer, out SkillRuleEntry rule)
+        {
+            return TryFindFaceUpRule(
+                state,
+                attackerIsPlayer,
+                e => string.Equals(e.CardId, "NO008", StringComparison.Ordinal)
+                    && e.SkillIndex == 1
+                    && string.Equals(e.EffectId, AttackSunCeHubJuEffectId, StringComparison.Ordinal),
+                out _,
+                out _,
+                out _,
+                out rule);
+        }
+
+        public static bool ShouldOfferHubJuYingYang(BattleState state, bool attackerIsPlayer)
+        {
+            if (state == null || state.HubJuYingYangWindowConsumedForCurrentAttack)
+                return false;
+            if (state.PendingDamageCategory != DamageCategory.Blade)
+                return false;
+            int declared = state.PendingBaseDamage + state.PendingAttackBonus + state.PendingReservedAttackerIndicatorBonus;
+            if (declared <= 0)
+                return false;
+            if (!TryFindSunCeHubJuRule(state, attackerIsPlayer, out SkillRuleEntry rule) || rule == null)
+                return false;
+            int cost = Mathf.Max(1, rule.Value1);
+            return state.GetSide(attackerIsPlayer).Morale >= cost;
+        }
+
+        public static void ApplyHubJuYingYangPlayerConfirm(BattleState state, bool attackerIsPlayer)
+        {
+            if (state == null)
+                return;
+            if (!TryFindSunCeHubJuRule(state, attackerIsPlayer, out SkillRuleEntry rule) || rule == null)
+                return;
+            int cost = Mathf.Max(1, rule.Value1);
+            int bonus = Mathf.Max(0, rule.Value2);
+            SideState side = state.GetSide(attackerIsPlayer);
+            if (side.Morale < cost)
+                return;
+            side.Morale -= cost;
+            ApplyRenDeWhenMoraleSpent(state, attackerIsPlayer);
+            state.PendingAttackBonus += bonus;
+            AppendCombatNote(state, "\u3010\u864e\u8e1f\u9e70\u626c\u3011\u6d88\u8017" + cost + "\u70b9\u58eb\u6c14\uff0c\u672c\u6b21\u5c06\u8981\u9020\u6210\u7684\u5175\u5203\u4f24\u5bb3+" + bonus);
+        }
+
+        private static void TryAutoHubJuYingYangOpponent(BattleState state, bool attackerIsPlayer)
+        {
+            if (state == null || attackerIsPlayer)
+                return;
+            if (!ShouldOfferHubJuYingYang(state, false))
+                return;
+            if (UnityEngine.Random.value > 0.35f)
+                return;
+            ApplyHubJuYingYangPlayerConfirm(state, false);
+        }
+
+        public static void OfferHubJuYingYangIfEligibleThen(BattleState state, bool attackerIsPlayer, Action next)
+        {
+            if (state == null)
+            {
+                next?.Invoke();
+                return;
+            }
+
+            if (state.HubJuYingYangWindowConsumedForCurrentAttack)
+            {
+                next?.Invoke();
+                return;
+            }
+
+            if (!ShouldOfferHubJuYingYang(state, attackerIsPlayer) || GameUI.IsOnlineBattle())
+            {
+                state.HubJuYingYangWindowConsumedForCurrentAttack = true;
+                next?.Invoke();
+                return;
+            }
+
+            if (attackerIsPlayer)
+            {
+                GameUI.BeginHubJuYingYangOffer(() =>
+                {
+                    if (state != null)
+                        state.HubJuYingYangWindowConsumedForCurrentAttack = true;
+                    next?.Invoke();
+                    GameUI.NotifyPhaseChanged();
+                });
+                return;
+            }
+
+            TryAutoHubJuYingYangOpponent(state, false);
+            state.HubJuYingYangWindowConsumedForCurrentAttack = true;
+            next?.Invoke();
         }
 
         private static void TryShowAttackDeclareBanner(BattleState state, bool attackerIsPlayer, Action onAfterDeclareBanner)
@@ -888,7 +1208,7 @@ namespace JunzhenDuijue
                 return;
             }
 
-            int declared = Mathf.Max(0, state.PendingBaseDamage + state.PendingAttackBonus);
+            int declared = Mathf.Max(0, state.PendingBaseDamage + state.PendingAttackBonus + state.PendingReservedAttackerIndicatorBonus);
             bool isGeneric = state.PendingAttackSkillKind == SelectedSkillKind.GenericAttack;
             if (!isGeneric && declared <= 0 && state.PendingPostResolveDrawToAttacker <= 0 && state.PendingExtraPlayPhasesToGrant <= 0 && !state.PendingIgnoreDefenseReduction)
             {
@@ -910,7 +1230,11 @@ namespace JunzhenDuijue
                         ? DescribeCeMaPatternShapeForBanner(played, state)
                         : string.Equals(skillKey, "NO005_0", StringComparison.Ordinal)
                             ? DescribeYuanShuLianZhuShapeForBanner(state)
-                            : GenericAttackShapes.DescribeShapeForLog(state, played);
+                            : string.Equals(skillKey, "NO007_0", StringComparison.Ordinal)
+                                ? DescribeJiangDongMenghuShapeForBanner(state)
+                                : string.Equals(skillKey, "NO008_0", StringComparison.Ordinal)
+                                    ? DescribeSunCeZhuandouShapeForBanner(state, played)
+                                    : GenericAttackShapes.DescribeShapeForLog(state, played);
 
                     var sb = new System.Text.StringBuilder();
                     if (!string.IsNullOrEmpty(shape))
@@ -1130,7 +1454,7 @@ namespace JunzhenDuijue
                 return false;
             if (state.HuBuGuanYouWindowConsumedForCurrentAttack)
                 return false;
-            if (state.PendingBaseDamage + state.PendingAttackBonus <= 0)
+            if (state.PendingBaseDamage + state.PendingAttackBonus + state.PendingReservedAttackerIndicatorBonus <= 0)
                 return false;
             if (!SideHasFaceUpHuBuGuanYou(state, attackerIsPlayer))
                 return false;

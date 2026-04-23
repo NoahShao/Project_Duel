@@ -280,10 +280,14 @@ namespace JunzhenDuijue
                 return;
             CancelPendingGenericAttackShapeChoice();
             _state.PendingAttackBonus = 0;
+            _state.PendingReservedAttackerIndicatorBonus = 0;
             _state.PendingBaseDamage = 0;
             _state.PendingPostResolveDrawToAttacker = 0;
             _state.PendingExtraPlayPhasesToGrant = 0;
             _state.PendingCombatNote = string.Empty;
+            _state.PendingAttackPatternVariant = -1;
+            _state.PendingJiangDongMenghuBannerKind = -1;
+            _state.PendingSunCeZhuandouBannerKind = -1;
             _state.PendingAttackSkillKind = SelectedSkillKind.None;
             _state.PendingAttackSkillName = string.Empty;
         }
@@ -335,7 +339,7 @@ namespace JunzhenDuijue
 
             BattleFlowLog.Add(
                 FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u58f0\u660e\u9632\u5fa1\u6280\u3010" + _state.PendingDefenseSkillName + "\u3011\uff0c\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction + "\u3002");
-            Action afterBanner = defenderIsPlayer && !GameUI.IsOnlineBattle() ? TryAutoEndPlayerDefenseAfterDeclareIfIdle : null;
+            Action afterBanner = defenderIsPlayer && !GameUI.IsOnlineBattle() ? TryEndPlayerDefenseAfterDefenseSkillDeclare : null;
             TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex, afterBanner);
             GameUI.NotifyPhaseChanged();
         }
@@ -369,7 +373,14 @@ namespace JunzhenDuijue
             _state.PendingDefenseSkillName = string.IsNullOrWhiteSpace(skillName) ? "防御技" : skillName;
             _state.PendingDefenseReduction = 0;
             _state.PendingDefenseSkillKind = SelectedSkillKind.GeneralSkill;
-            bool deferDefenseDeclare = OfflineSkillEngine.ConfigureDefenseSkill(_state, defenderIsPlayer, generalIndex, skillIndex);
+            Action afterDefenseDeclareBanner = defenderIsPlayer && !GameUI.IsOnlineBattle() ? TryEndPlayerDefenseAfterDefenseSkillDeclare : null;
+            bool deferDefenseDeclare = OfflineSkillEngine.ConfigureDefenseSkill(
+                _state,
+                defenderIsPlayer,
+                generalIndex,
+                skillIndex,
+                () => TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex, afterDefenseDeclareBanner),
+                out bool defenseDeclareUiChainedToBamenOutcomeToast);
             if (_state.PendingDefenseReduction <= 0)
                 _state.PendingDefenseReduction = 1;
             _state.DefenseSkillLocked = true;
@@ -378,15 +389,15 @@ namespace JunzhenDuijue
             {
                 BattleFlowLog.Add(
                     FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u58f0\u660e\u9632\u5fa1\u6280\u3010" + _state.PendingDefenseSkillName + "\u3011\uff0c\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction + "\u3002");
-                Action afterBanner = defenderIsPlayer && !GameUI.IsOnlineBattle() ? TryAutoEndPlayerDefenseAfterDeclareIfIdle : null;
-                TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex, afterBanner);
+                if (!defenseDeclareUiChainedToBamenOutcomeToast)
+                    TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex, afterDefenseDeclareBanner);
             }
 
             GameUI.NotifyPhaseChanged();
         }
 
-        /// <summary>离线玩家宣告防御技后：若无其他防御阶段可点技能，则在宣告横幅结束（或无需横幅）后自动结束防御。</summary>
-        private static void TryAutoEndPlayerDefenseAfterDeclareIfIdle()
+        /// <summary>离线玩家宣告防御技后：在宣告横幅结束（或无需横幅）后，若无其他仍可使用技能则结束防御；否则留给玩家继续操作。</summary>
+        private static void TryEndPlayerDefenseAfterDefenseSkillDeclare()
         {
             if (_state == null || GameUI.IsBattleMatchEnded())
                 return;
@@ -601,41 +612,46 @@ namespace JunzhenDuijue
                     }
 
                     OnPlayPhaseEnd?.Invoke(attackerIsPlayer);
-                    if (_state.ActiveSide.PlayedThisPhase.Count > 0)
+                    GameUI.RunJiangDongMengHuPlayPhaseEndThen(_state, attackerIsPlayer, () =>
                     {
-                        if (_state.PendingAttackSkillKind == SelectedSkillKind.None)
+                        if (_state == null)
+                            return;
+                        if (_state.ActiveSide.PlayedThisPhase.Count > 0)
                         {
-                            SetAttackSkillSelection(-1, -1, "\u901a\u7528\u653b\u51fb", () =>
+                            if (_state.PendingAttackSkillKind == SelectedSkillKind.None)
                             {
-                                if (_state == null)
-                                    return;
-                                OfferHuBuGuanYouThenContinueMainEnd(() =>
+                                SetAttackSkillSelection(-1, -1, "\u901a\u7528\u653b\u51fb", () =>
                                 {
                                     if (_state == null)
                                         return;
-                                    _state.CurrentPhase = BattlePhase.Defense;
-                                    _state.CurrentPhaseStep = PhaseStep.Start;
-                                    RunPhaseStep();
-                                    GameUI.NotifyPhaseChanged();
+                                    OfferHuBuGuanYouThenContinueMainEnd(() =>
+                                    {
+                                        if (_state == null)
+                                            return;
+                                        _state.CurrentPhase = BattlePhase.Defense;
+                                        _state.CurrentPhaseStep = PhaseStep.Start;
+                                        RunPhaseStep();
+                                        GameUI.NotifyPhaseChanged();
+                                    });
                                 });
+                                return;
+                            }
+
+                            OfferHuBuGuanYouThenContinueMainEnd(() =>
+                            {
+                                if (_state == null)
+                                    return;
+                                NotifyActiveSideHandEmptyPassivesIfMatchActive();
+                                _state.CurrentPhase = BattlePhase.Defense;
+                                _state.CurrentPhaseStep = PhaseStep.Start;
+                                RunPhaseStep();
+                                GameUI.NotifyPhaseChanged();
                             });
                             return;
                         }
 
-                        OfferHuBuGuanYouThenContinueMainEnd(() =>
-                        {
-                            if (_state == null)
-                                return;
-                            NotifyActiveSideHandEmptyPassivesIfMatchActive();
-                            _state.CurrentPhase = BattlePhase.Defense;
-                            _state.CurrentPhaseStep = PhaseStep.Start;
-                            RunPhaseStep();
-                            GameUI.NotifyPhaseChanged();
-                        });
-                        return;
-                    }
-
-                    AdvanceFromPlayPhase();
+                        AdvanceFromPlayPhase();
+                    });
                     return;
 
                 case BattlePhase.Defense:
@@ -858,18 +874,21 @@ namespace JunzhenDuijue
 
         private static void ResolveCurrentCombat(Action onResolveFullyComplete)
         {
-            int defenseReduction = _state.PendingIgnoreDefenseReduction ? 0 : _state.PendingDefenseReduction;
-            int rawHit = _state.PendingBaseDamage + _state.PendingAttackBonus;
-            int damageAfterDefense = rawHit - defenseReduction;
+            int rawHit = _state.PendingBaseDamage + _state.PendingAttackBonus + _state.PendingReservedAttackerIndicatorBonus;
+            int preMit = Mathf.Max(0, _state.PendingPreResistFlatMitigation);
+            int damageWork = Mathf.Max(0, rawHit - preMit);
             if (_state.PendingHalveIncomingDamageWithResist)
             {
-                int resistCut = Mathf.CeilToInt(damageAfterDefense / 2f);
-                damageAfterDefense = Mathf.Max(0, damageAfterDefense - resistCut);
+                int resistCut = Mathf.CeilToInt(damageWork / 2f);
+                damageWork = Mathf.Max(0, damageWork - resistCut);
                 _state.PendingHalveIncomingDamageWithResist = false;
             }
 
+            int defenseReduction = _state.PendingIgnoreDefenseReduction ? 0 : _state.PendingDefenseReduction;
+            damageWork = Mathf.Max(0, damageWork - defenseReduction);
+
             int changHouBonus = OfflineSkillEngine.GetChangHouBonusWhenResolvingAttackDamage(_state);
-            int damage = Mathf.Max(0, damageAfterDefense + changHouBonus);
+            int damage = Mathf.Max(0, damageWork + changHouBonus);
             string attackName = string.IsNullOrWhiteSpace(_state.PendingAttackSkillName) ? "\u901a\u7528\u653b\u51fb" : _state.PendingAttackSkillName;
             string defenseName = string.IsNullOrWhiteSpace(_state.PendingDefenseSkillName) ? "\u672a\u9632\u5fa1" : _state.PendingDefenseSkillName;
             DamageCategory dmgCat = _state.PendingDamageCategory == DamageCategory.None ? DamageCategory.Generic : _state.PendingDamageCategory;
@@ -1073,6 +1092,10 @@ namespace JunzhenDuijue
                 OfflineSkillEngine.AutoPickCeMaPatternVariant(_state, _state.ActiveSide.PlayedThisPhase);
             else if (string.Equals(skillKey, "NO005_0", StringComparison.Ordinal))
                 OfflineSkillEngine.AutoPickYuanShuPatternVariant(_state, _state.ActiveSide.PlayedThisPhase);
+            else if (string.Equals(skillKey, "NO007_0", StringComparison.Ordinal))
+                OfflineSkillEngine.AutoPickJiangDongMenghuVariant(_state, _state.ActiveSide.PlayedThisPhase);
+            else if (string.Equals(skillKey, "NO008_0", StringComparison.Ordinal))
+                OfflineSkillEngine.AutoPickSunCeZhuandouVariant(_state, _state.ActiveSide.PlayedThisPhase);
         }
 
         private static void OfferHuBuGuanYouThenContinueMainEnd(Action continueAfter)
@@ -1126,14 +1149,21 @@ namespace JunzhenDuijue
                 _state.PendingDefenseSkillName = skillName;
                 _state.PendingDefenseReduction = 0;
                 _state.PendingDefenseSkillKind = SelectedSkillKind.GeneralSkill;
-                bool deferDefenseDeclare = OfflineSkillEngine.ConfigureDefenseSkill(_state, defenderIsPlayer, generalIndex, skillIndex);
+                bool deferDefenseDeclare = OfflineSkillEngine.ConfigureDefenseSkill(
+                    _state,
+                    defenderIsPlayer,
+                    generalIndex,
+                    skillIndex,
+                    null,
+                    out bool defenseDeclareUiChainedToBamenOutcomeToast);
                 if (_state.PendingDefenseReduction <= 0)
                     _state.PendingDefenseReduction = 1;
                 if (!deferDefenseDeclare)
                 {
                     BattleFlowLog.Add(
                         FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff08\u81ea\u52a8\uff09\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u9009\u7528\u9632\u5fa1\u6280\u3010" + skillName + "\u3011\uff0c\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction + "\u3002");
-                    TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex);
+                    if (!defenseDeclareUiChainedToBamenOutcomeToast)
+                        TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex);
                 }
             }
             else
@@ -1314,7 +1344,7 @@ namespace JunzhenDuijue
             string turn = FlowTurnBracket(atkPlayer);
             string actor = FlowAttackerActor(atkPlayer);
             var cards = _state.ActiveSide.PlayedThisPhase;
-            int announced = Mathf.Max(0, _state.PendingBaseDamage + _state.PendingAttackBonus);
+            int announced = Mathf.Max(0, _state.PendingBaseDamage + _state.PendingAttackBonus + _state.PendingReservedAttackerIndicatorBonus);
 
             var line = new StringBuilder();
             line.Append(turn).Append("\u51fa\u724c\u9636\u6bb5\uff0c").Append(actor);

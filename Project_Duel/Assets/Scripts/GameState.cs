@@ -32,6 +32,17 @@ namespace JunzhenDuijue
                 return (Suit ?? string.Empty) + rankText;
             }
         }
+
+        /// <summary>
+        /// 与另一张牌是否为同一「实体」牌（花色、点数、角色代理标记等）。
+        /// 用于【八门金锁】察势弹窗回调：避免依赖带 string 字段的 struct 默认 <see cref="object.Equals(object?)"/> 在部分运行时下不可靠。
+        /// </summary>
+        public bool SamePhysicalCard(in PokerCard other) =>
+            Rank == other.Rank
+            && string.Equals(Suit ?? string.Empty, other.Suit ?? string.Empty, StringComparison.Ordinal)
+            && PlayedAsGeneral == other.PlayedAsGeneral
+            && GeneralSlotIndex == other.GeneralSlotIndex
+            && string.Equals(PlayedRoleDisplayName ?? string.Empty, other.PlayedRoleDisplayName ?? string.Empty, StringComparison.Ordinal);
     }
 
     public sealed class SideState
@@ -252,6 +263,8 @@ namespace JunzhenDuijue
         public const int DefaultMoraleCap = 2;
         public const int MaxMorale = 2;
         public const int MaxPlayPerPhase = 5;
+        /// <summary>【孙策·转斗千里】在场时，单出牌阶段非将打出区张数上限（将牌当牌不计入）。</summary>
+        public const int SunCeMaxNonGeneralPlayCap = 20;
         /// <summary>通用攻击枚举子集时参与组合的上限（含角色代理牌）；避免张数过大时 2^n 爆炸。</summary>
         public const int MaxCardsEvaluatedForGenericAttack = 12;
 
@@ -273,6 +286,8 @@ namespace JunzhenDuijue
         public DamageCategory PendingDamageCategory;
         public DamageElement PendingDamageElement;
         public int PendingAttackBonus;
+        /// <summary>「将要造成伤害」前、由己方效果指示物等叠加的数值（如日后【追锋】）；与 <see cref="PendingAttackBonus"/> 一并计入 rawHit，早于抵御/防御，晚于【虎踞鹰扬】类写入 <see cref="PendingAttackBonus"/> 的节点由规则自行区分。</summary>
+        public int PendingReservedAttackerIndicatorBonus;
         public int PendingDefenseReduction;
         public int PendingAttackGeneralIndex = -1;
         public int PendingAttackSkillIndex = -1;
@@ -283,10 +298,14 @@ namespace JunzhenDuijue
         public SelectedSkillKind PendingAttackSkillKind = SelectedSkillKind.None;
         public SelectedSkillKind PendingDefenseSkillKind = SelectedSkillKind.None;
         public bool PendingIgnoreDefenseReduction;
-        /// <summary>多牌型攻击技由玩家在二级弹窗选择；当前用于【策马斩将】0=两张红色单牌 1=红色顺子 2=红色同花顺；-1 表示未选或由 AI 自动择优。</summary>
+        /// <summary>多牌型攻击技由玩家在二级弹窗选择；【策马】0/1/2；【远矢】0/1；【江东猛虎】0=对子 1=两对；【转斗千里】0=自由顺子 1=自由同花顺；-1 未选或由 AI 自动择优。</summary>
         public int PendingAttackPatternVariant = -1;
         /// <summary>【策马斩将】本次结算在横幅上展示的牌型分支（0/1/2），与 <see cref="PendingAttackPatternVariant"/> 在配置成功后对齐；-1 表示未使用。</summary>
         public int PendingCeMaBannerShapeKind = -1;
+        /// <summary>【江东猛虎】宣言横幅用牌型字：0 对子、1 两对；-1 未登记。</summary>
+        public int PendingJiangDongMenghuBannerKind = -1;
+        /// <summary>【转斗千里】宣言横幅用：0 自由顺子、1 自由同花顺；-1 未登记。</summary>
+        public int PendingSunCeZhuandouBannerKind = -1;
         /// <summary>通用攻击：玩家在 <see cref="GenericAttackShapes.BuildSortedOptions"/> 列表中的选项下标；-1 表示未指定（多选项时由 AI 择优或等待玩家选择）。</summary>
         public int PendingGenericAttackOptionIndex = -1;
         public bool PendingGenericAttackShapeChoicePending;
@@ -302,11 +321,29 @@ namespace JunzhenDuijue
         public bool DefenseBuffStepDone;
         public bool DefenseSkillLocked;
         /// <summary>【八门金锁】已从牌库顶翻出、待察势或待入弃牌/手牌的牌（不在 Deck/Hand/Discard 中）。</summary>
-        public PokerCard PendingDefenseBamenReveal;
-        /// <summary>本回合已消耗一层「抵御」：下一次结算攻击伤害时，在防御减免后再将伤害减半（向上取整减免量）。</summary>
+        public PokerCard? PendingDefenseBamenReveal;
+        /// <summary>本回合已消耗一层「抵御」：下一次结算攻击伤害时，在「登记防御减伤」之前将伤害减半（向上取整减免量）；顺序见 <see cref="PendingPreResistFlatMitigation"/> 注释。</summary>
         public bool PendingHalveIncomingDamageWithResist;
+        /// <summary>
+        /// 结算攻击伤害时，在「抵御」减半与「防御技」登记减伤之前先扣减的数值（如「将要受到通用伤害时 -1」类减伤技能）。
+        /// 顺序：<see cref="PendingBaseDamage"/> + <see cref="PendingAttackBonus"/> + <see cref="PendingReservedAttackerIndicatorBonus"/> → 本字段 → 抵御减半 → <see cref="PendingDefenseReduction"/> → 结算节点上【长吼】等加伤。
+        /// </summary>
+        public int PendingPreResistFlatMitigation;
+
+        /// <summary>【江东猛虎】在当前出牌阶段结束时待恢复的士气（与 <see cref="PendingSunJianMoraleRestorePlayPhaseIndex"/> 一致时于 End 结算）。</summary>
+        public int PendingSunJianMoraleRestoreAmount;
+
+        /// <summary>【江东猛虎】登记时的 <see cref="CurrentPlayPhaseIndex"/>；仅在该索引的出牌阶段 End 时结算士气。</summary>
+        public int PendingSunJianMoraleRestorePlayPhaseIndex = -1;
+
+        /// <summary>【江东猛虎】士气恢复归属方（登记攻击的一方）。</summary>
+        public bool PendingSunJianMoraleRestoreForSideIsPlayer;
+
         /// <summary>【虎步关右】本次攻击宣言节点是否已询问过（每节点至多一次，防止重复弹窗）。</summary>
         public bool HuBuGuanYouWindowConsumedForCurrentAttack;
+
+        /// <summary>【虎踞鹰扬】本次攻击在宣言横幅前是否已结束询问（每节点至多一次）。</summary>
+        public bool HubJuYingYangWindowConsumedForCurrentAttack;
 
         /// <summary>本弃牌阶段是否已在「弃牌阶段开始」或结束时结算过【仁者无敌】摸牌展示效果（避免开始发动后结束再结算一次）。</summary>
         public bool RenZheWuDiHandledThisDiscardPhase;
@@ -335,6 +372,7 @@ namespace JunzhenDuijue
             PendingDamageCategory = DamageCategory.None;
             PendingDamageElement = DamageElement.None;
             PendingAttackBonus = 0;
+            PendingReservedAttackerIndicatorBonus = 0;
             PendingDefenseReduction = 0;
             PendingAttackGeneralIndex = -1;
             PendingAttackSkillIndex = -1;
@@ -347,6 +385,8 @@ namespace JunzhenDuijue
             PendingIgnoreDefenseReduction = false;
             PendingAttackPatternVariant = -1;
             PendingCeMaBannerShapeKind = -1;
+            PendingJiangDongMenghuBannerKind = -1;
+            PendingSunCeZhuandouBannerKind = -1;
             PendingGenericAttackOptionIndex = -1;
             PendingGenericAttackShapeChoicePending = false;
             PendingGenericAttackShapeDisplayName = string.Empty;
@@ -359,7 +399,9 @@ namespace JunzhenDuijue
             DefenseSkillLocked = false;
             PendingDefenseBamenReveal = null;
             PendingHalveIncomingDamageWithResist = false;
+            PendingPreResistFlatMitigation = 0;
             HuBuGuanYouWindowConsumedForCurrentAttack = false;
+            HubJuYingYangWindowConsumedForCurrentAttack = false;
         }
 
         public void FinishCurrentPlayPhaseCombat()

@@ -52,6 +52,11 @@ namespace JunzhenDuijue
         private static TextMeshProUGUI _phaseLabel;
         private static Button _battleSettingsButton;
         private static GameObject _battleSettingsPopupRoot;
+        private const string BattleGmToolsPrefsKey = "BattleGmToolsEnabled";
+        private static Toggle _battleGmToolsToggle;
+        private static GameObject _battleGmToolsSectionRoot;
+        private static TMP_InputField _gmMoraleRestoreInput;
+        private static TMP_InputField _gmMoraleCapAddInput;
         private static TextMeshProUGUI _deckCountTooltip;
         private static GameObject _deckTooltipRoot;
         private static Button _discardButton;
@@ -90,6 +95,9 @@ namespace JunzhenDuijue
         private static readonly List<PokerCard> _jushuiSnapshot = new List<PokerCard>();
         private static GameObject _moralePopupRoot;
         private static Button[] _moraleEffectButtons = new Button[3];
+        private static Button _moralePopupCancelButton;
+        private static System.Action _moralePopupOnFullyClosed;
+        private static GameObject _sunJianMoraleAskRoot;
         private static GameObject _skillInfoReadPopupRoot;
         private static TextMeshProUGUI _skillInfoReadPopupTitle;
         private static TextMeshProUGUI _skillInfoReadPopupBody;
@@ -585,6 +593,7 @@ namespace JunzhenDuijue
             HideMatchResultPopups();
             CloseChaShiCourtRankChoicePopup();
             TearDownHuBuGuanYouPopup(false);
+            TearDownHubJuYingYangOfferPopup(false);
             DestroyNonAttackDamageTargetPickRoot();
             _nonAttackDamageTargetPickOnComplete = null;
             CloseHandEmptyOrderPopup();
@@ -727,7 +736,7 @@ namespace JunzhenDuijue
             panel.transform.SetParent(_battleSettingsPopupRoot.transform, false);
             var panelRect = panel.AddComponent<RectTransform>();
             panelRect.anchorMin = panelRect.anchorMax = new Vector2(0.5f, 0.5f);
-            panelRect.sizeDelta = new Vector2(360f, 220f);
+            panelRect.sizeDelta = new Vector2(400f, 420f);
             panel.AddComponent<Image>().color = new Color(0.16f, 0.18f, 0.24f, 0.98f);
 
             var titleGo = new GameObject("Title");
@@ -740,28 +749,241 @@ namespace JunzhenDuijue
             titleRect.sizeDelta = new Vector2(300f, 36f);
             CreateGameText(titleGo.transform, "\u5bf9\u5c40\u8bbe\u7f6e", 26);
 
-            var surrenderGo = new GameObject("SurrenderButton");
-            surrenderGo.transform.SetParent(panel.transform, false);
-            var surRect = surrenderGo.AddComponent<RectTransform>();
-            surRect.anchorMin = surRect.anchorMax = new Vector2(0.5f, 0.5f);
-            surRect.anchoredPosition = new Vector2(0f, 8f);
-            surRect.sizeDelta = new Vector2(220f, 48f);
-            surrenderGo.AddComponent<Image>().color = new Color(0.55f, 0.22f, 0.22f, 1f);
-            var surBtn = surrenderGo.AddComponent<Button>();
-            surBtn.onClick.AddListener(OnSurrenderFromSettingsClicked);
-            CreateGameText(surrenderGo.transform, "\u6295\u964d", 24);
+            var gmToggleGo = new GameObject("BattleGmToolsToggle");
+            gmToggleGo.transform.SetParent(panel.transform, false);
+            var gmToggleRt = gmToggleGo.AddComponent<RectTransform>();
+            gmToggleRt.anchorMin = new Vector2(0.5f, 1f);
+            gmToggleRt.anchorMax = new Vector2(0.5f, 1f);
+            gmToggleRt.pivot = new Vector2(0.5f, 1f);
+            gmToggleRt.anchoredPosition = new Vector2(0f, -48f);
+            gmToggleRt.sizeDelta = new Vector2(360f, 30f);
+            var gmToggleBg = gmToggleGo.AddComponent<Image>();
+            gmToggleBg.color = new Color(0.22f, 0.25f, 0.32f, 1f);
+            _battleGmToolsToggle = gmToggleGo.AddComponent<Toggle>();
+            _battleGmToolsToggle.targetGraphic = gmToggleBg;
+            _battleGmToolsToggle.transition = Selectable.Transition.ColorTint;
+            var gmMarkGo = new GameObject("Checkmark");
+            gmMarkGo.transform.SetParent(gmToggleGo.transform, false);
+            var gmMarkRt = gmMarkGo.AddComponent<RectTransform>();
+            gmMarkRt.anchorMin = new Vector2(0f, 0.5f);
+            gmMarkRt.anchorMax = new Vector2(0f, 0.5f);
+            gmMarkRt.pivot = new Vector2(0.5f, 0.5f);
+            gmMarkRt.anchoredPosition = new Vector2(16f, 0f);
+            gmMarkRt.sizeDelta = new Vector2(18f, 18f);
+            var gmMarkImg = gmMarkGo.AddComponent<Image>();
+            gmMarkImg.color = new Color(0.35f, 0.82f, 0.48f, 1f);
+            _battleGmToolsToggle.graphic = gmMarkImg;
+            var gmLblGo = new GameObject("GmToggleLabel");
+            gmLblGo.transform.SetParent(gmToggleGo.transform, false);
+            var gmLblRt = gmLblGo.AddComponent<RectTransform>();
+            gmLblRt.anchorMin = Vector2.zero;
+            gmLblRt.anchorMax = Vector2.one;
+            gmLblRt.offsetMin = new Vector2(40f, 0f);
+            gmLblRt.offsetMax = new Vector2(-6f, 0f);
+            var gmLbl = CreateGameText(gmLblGo.transform, "GM\u5de5\u5177\uff08\u8c03\u8bd5\uff09", 17, TextAlignmentOptions.Left);
+            if (gmLbl != null)
+                gmLbl.raycastTarget = false;
+            _battleGmToolsToggle.isOn = PlayerPrefs.GetInt(BattleGmToolsPrefsKey, 0) != 0;
+            _battleGmToolsToggle.onValueChanged.AddListener(OnBattleGmToolsToggleChanged);
+
+            _battleGmToolsSectionRoot = new GameObject("BattleGmToolsSection");
+            _battleGmToolsSectionRoot.transform.SetParent(panel.transform, false);
+            var gmSecRt = _battleGmToolsSectionRoot.AddComponent<RectTransform>();
+            gmSecRt.anchorMin = Vector2.zero;
+            gmSecRt.anchorMax = Vector2.one;
+            // 底部留出「关闭 + 投降」条带，避免后渲染的投降挡住第二行 GM「应用」。
+            gmSecRt.offsetMin = new Vector2(14f, 128f);
+            gmSecRt.offsetMax = new Vector2(-14f, -86f);
+            var gmV = _battleGmToolsSectionRoot.AddComponent<VerticalLayoutGroup>();
+            gmV.spacing = 10f;
+            gmV.padding = new RectOffset(0, 0, 4, 0);
+            gmV.childAlignment = TextAnchor.UpperCenter;
+            gmV.childControlHeight = true;
+            gmV.childControlWidth = true;
+            gmV.childForceExpandHeight = false;
+            gmV.childForceExpandWidth = true;
+
+            void AddGmRow(string label, out TMP_InputField inputField, UnityEngine.Events.UnityAction onApply)
+            {
+                var row = new GameObject("GmRow");
+                row.transform.SetParent(_battleGmToolsSectionRoot.transform, false);
+                var rowLe = row.AddComponent<LayoutElement>();
+                rowLe.preferredHeight = 40f;
+                rowLe.minHeight = 40f;
+                var h = row.AddComponent<HorizontalLayoutGroup>();
+                h.spacing = 8f;
+                h.childAlignment = TextAnchor.MiddleLeft;
+                h.childControlWidth = false;
+                h.childControlHeight = true;
+                h.childForceExpandWidth = false;
+                h.childForceExpandHeight = false;
+                h.padding = new RectOffset(0, 0, 0, 0);
+
+                var labGo = new GameObject("Label");
+                labGo.transform.SetParent(row.transform, false);
+                var labLe = labGo.AddComponent<LayoutElement>();
+                labLe.preferredWidth = 108f;
+                labLe.flexibleWidth = 0f;
+                var labTxt = CreateGameText(labGo.transform, label, 16, TextAlignmentOptions.Left);
+                if (labTxt != null)
+                    labTxt.raycastTarget = false;
+
+                var inputCmp = CreateBattleSettingsNumberInput(row.transform);
+                var inputLe = inputCmp.gameObject.AddComponent<LayoutElement>();
+                inputLe.preferredWidth = 132f;
+                inputLe.preferredHeight = 34f;
+                inputField = inputCmp;
+
+                var applyGo = new GameObject("Apply");
+                applyGo.transform.SetParent(row.transform, false);
+                var applyLe = applyGo.AddComponent<LayoutElement>();
+                applyLe.preferredWidth = 72f;
+                applyLe.preferredHeight = 34f;
+                applyGo.AddComponent<Image>().color = new Color(0.28f, 0.36f, 0.48f, 1f);
+                var applyBtn = applyGo.AddComponent<Button>();
+                applyBtn.onClick.AddListener(onApply);
+                var applyLbl = CreateGameText(applyGo.transform, "\u5e94\u7528", 16);
+                if (applyLbl != null)
+                    applyLbl.raycastTarget = false;
+            }
+
+            AddGmRow("\u6062\u590d\u58eb\u6c14", out _gmMoraleRestoreInput, OnGmBattleMoraleRestoreClicked);
+            AddGmRow("\u58eb\u6c14\u4e0a\u9650", out _gmMoraleCapAddInput, OnGmBattleMoraleCapAddClicked);
+
+            var gmHintGo = new GameObject("GmHint");
+            gmHintGo.transform.SetParent(_battleGmToolsSectionRoot.transform, false);
+            var hintLe = gmHintGo.AddComponent<LayoutElement>();
+            hintLe.preferredHeight = 22f;
+            CreateGameText(gmHintGo.transform, "\u4ec5\u5df1\u65b9\u00b7\u79bb\u7ebf\u5bf9\u5c40\u751f\u6548\uff1b\u6574\u6570\u53ef\u4e3a\u8d1f\u4ee5\u51cf\u5c11", 13, TextAlignmentOptions.Left);
 
             var closeGo = new GameObject("CloseButton");
             closeGo.transform.SetParent(panel.transform, false);
             var closeRect = closeGo.AddComponent<RectTransform>();
             closeRect.anchorMin = closeRect.anchorMax = new Vector2(0.5f, 0f);
             closeRect.pivot = new Vector2(0.5f, 0f);
-            closeRect.anchoredPosition = new Vector2(0f, 16f);
-            closeRect.sizeDelta = new Vector2(160f, 40f);
+            closeRect.anchoredPosition = new Vector2(0f, 14f);
+            closeRect.sizeDelta = new Vector2(200f, 40f);
             closeGo.AddComponent<Image>().color = new Color(0.22f, 0.26f, 0.34f, 1f);
             var closeBtn = closeGo.AddComponent<Button>();
             closeBtn.onClick.AddListener(CloseBattleSettingsPopup);
-            CreateGameText(closeGo.transform, "\u5173\u95ed", 22);
+            var closeLbl = CreateGameText(closeGo.transform, "\u5173\u95ed", 22);
+            if (closeLbl != null)
+                closeLbl.raycastTarget = false;
+
+            var surrenderGo = new GameObject("SurrenderButton");
+            surrenderGo.transform.SetParent(panel.transform, false);
+            var surRect = surrenderGo.AddComponent<RectTransform>();
+            surRect.anchorMin = surRect.anchorMax = new Vector2(0.5f, 0f);
+            surRect.pivot = new Vector2(0.5f, 0f);
+            surRect.anchoredPosition = new Vector2(0f, 14f + 40f + 10f);
+            surRect.sizeDelta = new Vector2(220f, 48f);
+            surrenderGo.AddComponent<Image>().color = new Color(0.55f, 0.22f, 0.22f, 1f);
+            var surBtn = surrenderGo.AddComponent<Button>();
+            surBtn.onClick.AddListener(OnSurrenderFromSettingsClicked);
+            var surLbl = CreateGameText(surrenderGo.transform, "\u6295\u964d", 24);
+            if (surLbl != null)
+                surLbl.raycastTarget = false;
+
+            BattleSettingsGmSyncSectionActive();
+        }
+
+        private static TMP_InputField CreateBattleSettingsNumberInput(Transform parent)
+        {
+            var go = new GameObject("InputField");
+            go.transform.SetParent(parent, false);
+            var img = go.AddComponent<Image>();
+            img.color = new Color(0.35f, 0.42f, 0.52f, 1f);
+            var input = go.AddComponent<TMP_InputField>();
+            input.contentType = TMP_InputField.ContentType.IntegerNumber;
+            input.lineType = TMP_InputField.LineType.SingleLine;
+            input.targetGraphic = img;
+            var textArea = new GameObject("Text");
+            textArea.transform.SetParent(go.transform, false);
+            var text = textArea.AddComponent<TextMeshProUGUI>();
+            if (TMPHelper.GetDefaultFont() != null)
+                text.font = TMPHelper.GetDefaultFont();
+            text.fontSize = 17;
+            text.color = Color.white;
+            text.raycastTarget = false;
+            var textRect = textArea.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = new Vector2(8f, 4f);
+            textRect.offsetMax = new Vector2(-8f, -4f);
+            input.textViewport = textRect;
+            input.textComponent = text;
+            input.text = string.Empty;
+            return input;
+        }
+
+        private static void BattleSettingsGmSyncSectionActive()
+        {
+            if (_battleGmToolsSectionRoot == null)
+                return;
+            bool show = _battleGmToolsToggle != null && _battleGmToolsToggle.isOn && !_isOnlineMode;
+            _battleGmToolsSectionRoot.SetActive(show);
+        }
+
+        private static void OnBattleGmToolsToggleChanged(bool isOn)
+        {
+            PlayerPrefs.SetInt(BattleGmToolsPrefsKey, isOn ? 1 : 0);
+            PlayerPrefs.Save();
+            BattleSettingsGmSyncSectionActive();
+        }
+
+        private static bool TryParseGmInt(string s, out int value)
+        {
+            value = 0;
+            if (string.IsNullOrWhiteSpace(s))
+                return false;
+            return int.TryParse(s.Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out value);
+        }
+
+        private static void OnGmBattleMoraleRestoreClicked()
+        {
+            if (_state == null || _battleMatchEnded || _isOnlineMode)
+            {
+                ToastUI.Show("\u65e0\u6cd5\u4f7f\u7528\uff08\u9700\u79bb\u7ebf\u5bf9\u5c40\uff09", 2f);
+                return;
+            }
+
+            if (_gmMoraleRestoreInput == null || !TryParseGmInt(_gmMoraleRestoreInput.text, out int add))
+            {
+                ToastUI.Show("\u8bf7\u8f93\u5165\u6574\u6570", 1.8f);
+                return;
+            }
+
+            add = Mathf.Clamp(add, -999, 999);
+            var side = _state.Player;
+            int before = side.Morale;
+            side.Morale = Mathf.Clamp(side.Morale + add, 0, side.MoraleCap);
+            int delta = side.Morale - before;
+            RefreshAllFromState();
+            string deltaStr = delta > 0 ? "+" + delta : delta.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            ToastUI.Show("\u58eb\u6c14\u53d8\u5316 " + deltaStr + "\uff08\u5f53\u524d " + side.Morale + "/" + side.MoraleCap + "\uff09", 2.2f);
+        }
+
+        private static void OnGmBattleMoraleCapAddClicked()
+        {
+            if (_state == null || _battleMatchEnded || _isOnlineMode)
+            {
+                ToastUI.Show("\u65e0\u6cd5\u4f7f\u7528\uff08\u9700\u79bb\u7ebf\u5bf9\u5c40\uff09", 2f);
+                return;
+            }
+
+            if (_gmMoraleCapAddInput == null || !TryParseGmInt(_gmMoraleCapAddInput.text, out int add))
+            {
+                ToastUI.Show("\u8bf7\u8f93\u5165\u6574\u6570", 1.8f);
+                return;
+            }
+
+            add = Mathf.Clamp(add, -999, 999);
+            var side = _state.Player;
+            int beforeCap = side.MoraleCap;
+            side.MoraleCap = Mathf.Clamp(side.MoraleCap + add, 1, 99);
+            side.Morale = Mathf.Min(side.MoraleCap, Mathf.Max(0, side.Morale));
+            RefreshAllFromState();
+            ToastUI.Show("\u58eb\u6c14\u4e0a\u9650 " + beforeCap + " \u2192 " + side.MoraleCap + "\uff0c\u5f53\u524d\u58eb\u6c14 " + side.Morale, 2.2f);
         }
 
         private static void OpenBattleSettingsPopup()
@@ -773,6 +995,7 @@ namespace JunzhenDuijue
             CollapsePlayerHandIfExpanded();
             _battleSettingsPopupRoot.transform.SetAsLastSibling();
             _battleSettingsPopupRoot.SetActive(true);
+            BattleSettingsGmSyncSectionActive();
         }
 
         private static void CloseBattleSettingsPopup()
@@ -896,8 +1119,8 @@ namespace JunzhenDuijue
         }
 
         /// <summary>
-        /// 玩家为防御方且处于防御阶段 Main 时，除已锁定的防御技外是否仍有可点的技能（当前即开局同节点的强制/自选技）。
-        /// 用于宣告防御技后是否自动「结束防御」：有则保留让玩家再操作。
+        /// 玩家为防御方且处于防御阶段 Main 时，是否仍有「除已宣告的防御技外」还可点的技能。
+        /// 当前即开局同节点未结算完的强制/自选技（与 <see cref="RefreshGeneralSkillStatesForSide"/> 高亮规则一致）。
         /// </summary>
         public static bool PlayerHasOtherUsableSkillsInDefensePhaseMain()
         {
@@ -1409,10 +1632,7 @@ namespace JunzhenDuijue
             var content = new GameObject("IndicatorContent");
             content.transform.SetParent(strip.transform, false);
             _playerIndicatorStripContentRt = content.AddComponent<RectTransform>();
-            _playerIndicatorStripContentRt.anchorMin = Vector2.zero;
-            _playerIndicatorStripContentRt.anchorMax = Vector2.one;
-            _playerIndicatorStripContentRt.offsetMin = new Vector2(4f, 2f);
-            _playerIndicatorStripContentRt.offsetMax = new Vector2(-4f, -2f);
+            LayoutIndicatorStripContentRect(_playerIndicatorStripContentRt, 0f);
             strip.SetActive(false);
         }
 
@@ -1430,9 +1650,7 @@ namespace JunzhenDuijue
             var content = new GameObject("IndicatorContent");
             content.transform.SetParent(go.transform, false);
             _opponentIndicatorStripContentRt = content.AddComponent<RectTransform>();
-            SetFullRect(_opponentIndicatorStripContentRt);
-            _opponentIndicatorStripContentRt.offsetMin = new Vector2(4f, 2f);
-            _opponentIndicatorStripContentRt.offsetMax = new Vector2(-4f, -2f);
+            LayoutIndicatorStripContentRect(_opponentIndicatorStripContentRt, 0f);
             go.SetActive(false);
         }
 
@@ -1444,6 +1662,21 @@ namespace JunzhenDuijue
             if (n <= 0)
                 return 0f;
             return BattleIndicatorStrip.ComputeStripHeight(n) + 8f;
+        }
+
+        /// <summary>
+        /// 指示物内容区：底部对齐、固定高度。避免「全拉伸锚点 + sizeDelta」在 Unity 6 下宽高算成 0 导致指示物不显示。
+        /// </summary>
+        private static void LayoutIndicatorStripContentRect(RectTransform contentRt, float contentHeight)
+        {
+            if (contentRt == null)
+                return;
+            contentRt.anchorMin = new Vector2(0f, 0f);
+            contentRt.anchorMax = new Vector2(1f, 0f);
+            contentRt.pivot = new Vector2(0.5f, 0f);
+            contentRt.anchoredPosition = new Vector2(0f, 2f);
+            float h = Mathf.Max(0f, contentHeight);
+            contentRt.sizeDelta = new Vector2(-8f, h);
         }
 
         private static void RefreshBattleIndicatorStripUi()
@@ -1472,7 +1705,9 @@ namespace JunzhenDuijue
                 UnityEngine.Object.Destroy(_playerIndicatorStripContentRt.GetChild(i).gameObject);
 
             var entries = BattleIndicatorStrip.ListIndicatorEntries(_state.Player);
-            float w = Mathf.Max(_playerIndicatorStripContentRt.rect.width, CompactHandW - 24f);
+            var stripOuter = _playerIndicatorStripContentRt.parent as RectTransform;
+            float stripW = stripOuter != null && stripOuter.rect.width > 8f ? stripOuter.rect.width : CompactHandW;
+            float w = Mathf.Max(stripW - 8f, CompactHandW - 24f);
             float cellW = (w - BattleIndicatorStrip.CellPadX) / BattleIndicatorStrip.MaxCellsPerRow;
             bool resistClick = !_isOnlineMode && _state.CurrentPhase == BattlePhase.Defense && _state.CurrentPhaseStep == PhaseStep.Main &&
                                !_state.IsPlayerTurn && !_state.DefenseSkillLocked &&
@@ -1538,7 +1773,7 @@ namespace JunzhenDuijue
 
             int rows = entries.Count > 0 ? (entries.Count + BattleIndicatorStrip.MaxCellsPerRow - 1) / BattleIndicatorStrip.MaxCellsPerRow : 0;
             float contentH = rows > 0 ? rows * (BattleIndicatorStrip.CellHeight + BattleIndicatorStrip.CellPadY) + 4f : 0f;
-            _playerIndicatorStripContentRt.sizeDelta = new Vector2(w, contentH);
+            LayoutIndicatorStripContentRect(_playerIndicatorStripContentRt, contentH);
         }
 
         private static void RebuildOpponentHandIndicatorCells()
@@ -1549,7 +1784,9 @@ namespace JunzhenDuijue
                 UnityEngine.Object.Destroy(_opponentIndicatorStripContentRt.GetChild(i).gameObject);
 
             var entries = BattleIndicatorStrip.ListIndicatorEntries(_state.Opponent);
-            float w = _opponentIndicatorStripContentRt.rect.width > 8f ? _opponentIndicatorStripContentRt.rect.width : CompactHandW - 16f;
+            var oppStripOuter = _opponentIndicatorStripContentRt.parent as RectTransform;
+            float stripW = oppStripOuter != null && oppStripOuter.rect.width > 8f ? oppStripOuter.rect.width : CompactHandW;
+            float w = Mathf.Max(stripW - 8f, CompactHandW - 24f);
             float cellW = (w - BattleIndicatorStrip.CellPadX) / BattleIndicatorStrip.MaxCellsPerRow;
             for (int i = 0; i < entries.Count; i++)
             {
@@ -1588,7 +1825,7 @@ namespace JunzhenDuijue
 
             int rows = entries.Count > 0 ? (entries.Count + BattleIndicatorStrip.MaxCellsPerRow - 1) / BattleIndicatorStrip.MaxCellsPerRow : 0;
             float contentH = rows > 0 ? rows * (BattleIndicatorStrip.CellHeight + BattleIndicatorStrip.CellPadY) + 4f : 0f;
-            _opponentIndicatorStripContentRt.sizeDelta = new Vector2(w, contentH);
+            LayoutIndicatorStripContentRect(_opponentIndicatorStripContentRt, contentH);
         }
 
         private static void OnPlayerIndicatorResistClicked()
@@ -1630,7 +1867,10 @@ namespace JunzhenDuijue
         private static GameObject _battleIndicatorIntroTooltipRoot;
         private static TextMeshProUGUI _battleIndicatorIntroTooltipText;
 
-        /// <summary>出牌阶段开始：据守等弹窗结束后再进入 Main（由 <see cref="BattlePhaseManager"/> 调用）。</summary>
+        /// <summary>
+        /// 任意出牌阶段开始时：【据守】按<strong>先后手</strong>依次处理（先手方先、后手方后）；己方弹窗，对方仅在「对方出牌阶段开始」时按概率自动发动。
+        /// 联机仅直通（由 <see cref="BattlePhaseManager"/> 调用）。
+        /// </summary>
         public static void RunPlayPhaseStartPromptsThen(bool playPhaseOwnerIsPlayer, System.Action onAdvanceToMain)
         {
             if (_state == null || _battleMatchEnded)
@@ -1641,16 +1881,6 @@ namespace JunzhenDuijue
 
             if (_isOnlineMode)
             {
-                if (!playPhaseOwnerIsPlayer && OfflineSkillEngine.CanOfferPlayPhaseStartResist(_state, false, out _, out _, out SkillRuleEntry ruleO))
-                {
-                    if (UnityEngine.Random.value < 0.38f)
-                    {
-                        string log = OfflineSkillEngine.ApplyPlayPhaseStartResist(_state, false, ruleO);
-                        if (!string.IsNullOrEmpty(log))
-                            BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(_state.IsPlayerTurn) + log + "\u3002");
-                    }
-                }
-
                 onAdvanceToMain?.Invoke();
                 return;
             }
@@ -1667,24 +1897,51 @@ namespace JunzhenDuijue
                 return;
             }
 
-            if (!playPhaseOwnerIsPlayer && OfflineSkillEngine.CanOfferPlayPhaseStartResist(_state, false, out _, out _, out SkillRuleEntry ruleOpponent))
+            bool ownerIsPlayer = playPhaseOwnerIsPlayer;
+            bool initiativeSideIsPlayer = _state.InitiativeSideIsPlayer;
+            bool secondSideIsPlayer = !initiativeSideIsPlayer;
+
+            void finishJuShouChain()
             {
-                if (UnityEngine.Random.value < 0.38f)
+                RefreshAllFromState();
+                onAdvanceToMain?.Invoke();
+            }
+
+            void tryOpponentAutoJuShouIfTheirPlayPhaseStartThen(System.Action onDone)
+            {
+                if (!ownerIsPlayer
+                    && OfflineSkillEngine.CanOfferPlayPhaseStartResist(_state, false, out _, out _, out SkillRuleEntry ruleO))
                 {
-                    string log = OfflineSkillEngine.ApplyPlayPhaseStartResist(_state, false, ruleOpponent);
-                    if (!string.IsNullOrEmpty(log))
-                        BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(_state.IsPlayerTurn) + log + "\u3002");
+                    if (UnityEngine.Random.value < 0.38f)
+                    {
+                        string log = OfflineSkillEngine.ApplyPlayPhaseStartResist(_state, false, ruleO);
+                        if (!string.IsNullOrEmpty(log))
+                            BattleFlowLog.Add(BattlePhaseManager.FormatFlowTurnBracketForBattleLog(_state.IsPlayerTurn) + log + "\u3002");
+                    }
                 }
+
+                onDone?.Invoke();
+            }
+
+            void processSide(bool sideIsPlayer, System.Action onDone)
+            {
+                if (sideIsPlayer)
+                {
+                    if (OfflineSkillEngine.CanOfferPlayPhaseStartResist(_state, true, out _, out _, out SkillRuleEntry ruleP))
+                    {
+                        OpenJuShouOfferPopup(ruleP, onDone);
+                        return;
+                    }
+
+                    onDone?.Invoke();
+                    return;
+                }
+
+                tryOpponentAutoJuShouIfTheirPlayPhaseStartThen(onDone);
             }
 
             RefreshAllFromState();
-            if (playPhaseOwnerIsPlayer && OfflineSkillEngine.CanOfferPlayPhaseStartResist(_state, true, out _, out _, out SkillRuleEntry ruleP))
-            {
-                OpenJuShouOfferPopup(ruleP, onAdvanceToMain);
-                return;
-            }
-
-            onAdvanceToMain?.Invoke();
+            processSide(initiativeSideIsPlayer, () => processSide(secondSideIsPlayer, finishJuShouChain));
         }
 
         /// <summary>弃牌阶段开始：离线己方【仁者无敌】询问后再进入弃牌 Main。</summary>
@@ -2253,7 +2510,7 @@ namespace JunzhenDuijue
             panelR.anchorMax = new Vector2(0.5f, 0.5f);
             panelR.pivot = new Vector2(0.5f, 0.5f);
             panelR.anchoredPosition = Vector2.zero;
-            panelR.sizeDelta = new Vector2(400, 320);
+            panelR.sizeDelta = new Vector2(400, 352);
             panel.AddComponent<Image>().color = new Color(0.18f, 0.2f, 0.26f, 0.98f);
             var titleGo = new GameObject("Title");
             titleGo.transform.SetParent(panel.transform, false);
@@ -2274,24 +2531,71 @@ namespace JunzhenDuijue
                 br.anchorMin = new Vector2(0.5f, 1f);
                 br.anchorMax = new Vector2(0.5f, 1f);
                 br.pivot = new Vector2(0.5f, 1f);
-                br.anchoredPosition = new Vector2(0, -72 - i * 56);
-                br.sizeDelta = new Vector2(320, 48);
+                br.anchoredPosition = new Vector2(0, -58 - i * 54);
+                br.sizeDelta = new Vector2(320, 46);
                 btnGo.AddComponent<Image>().color = new Color(0.28f, 0.35f, 0.5f, 1f);
                 var btn = btnGo.AddComponent<Button>();
                 btn.onClick.AddListener(() => OnMoraleEffectClick(effectIndex));
                 var tt = CreateGameText(btnGo.transform, labels[i], 22);
+                if (tt != null)
+                    tt.raycastTarget = false;
                 SetFullRect(tt.GetComponent<RectTransform>());
                 _moraleEffectButtons[i] = btn;
+            }
+
+            var cancelGo = new GameObject("MoralePopupCancel");
+            cancelGo.transform.SetParent(panel.transform, false);
+            var cr = cancelGo.AddComponent<RectTransform>();
+            cr.anchorMin = new Vector2(0.5f, 1f);
+            cr.anchorMax = new Vector2(0.5f, 1f);
+            cr.pivot = new Vector2(0.5f, 1f);
+            cr.anchoredPosition = new Vector2(0f, -276f);
+            cr.sizeDelta = new Vector2(200f, 40f);
+            cancelGo.AddComponent<Image>().color = new Color(0.38f, 0.38f, 0.44f, 1f);
+            _moralePopupCancelButton = cancelGo.AddComponent<Button>();
+            _moralePopupCancelButton.onClick.AddListener(CloseMoralePopup);
+            var cancelTxt = CreateGameText(cancelGo.transform, "\u53d6\u6d88", 20);
+            if (cancelTxt != null)
+            {
+                cancelTxt.raycastTarget = false;
+                SetFullRect(cancelTxt.GetComponent<RectTransform>());
             }
         }
 
         private static void OpenMoralePopup()
         {
-            if (IsHuBuGuanYouPopupVisible() || IsNonAttackDamageTargetPickVisible())
+            OpenMoralePopupWithOptionalContinuation(null);
+        }
+
+        /// <summary>打开士气效果弹窗；<paramref name="onFullyClosed"/> 在弹窗关闭后调用（含点效果结算后、取消、遮罩关闭）。</summary>
+        private static void OpenMoralePopupWithOptionalContinuation(System.Action onFullyClosed)
+        {
+            if (IsHuBuGuanYouPopupVisible() || IsHubJuYingYangPopupVisible() || IsNonAttackDamageTargetPickVisible())
+            {
+                if (onFullyClosed != null)
+                    onFullyClosed();
                 return;
-            if (_state == null || !_state.IsPlayerTurn || _state.Player.Morale <= 0) return;
+            }
+
+            if (_state == null || !_state.IsPlayerTurn)
+            {
+                onFullyClosed?.Invoke();
+                return;
+            }
+
+            if (_state.Player.Morale <= 0)
+            {
+                onFullyClosed?.Invoke();
+                return;
+            }
+
             if (IsPlayerNonPassiveInputBlocked())
+            {
+                onFullyClosed?.Invoke();
                 return;
+            }
+
+            _moralePopupOnFullyClosed = onFullyClosed;
             CollapsePlayerHandIfExpanded();
             _moralePopupRoot.SetActive(true);
             RefreshMoralePopupButtons();
@@ -2484,7 +2788,128 @@ namespace JunzhenDuijue
 
         private static void CloseMoralePopup()
         {
-            if (_moralePopupRoot != null) _moralePopupRoot.SetActive(false);
+            if (_moralePopupRoot != null)
+                _moralePopupRoot.SetActive(false);
+            System.Action cont = _moralePopupOnFullyClosed;
+            _moralePopupOnFullyClosed = null;
+            cont?.Invoke();
+        }
+
+        private static void TearDownSunJianMoraleAskPopup()
+        {
+            if (_sunJianMoraleAskRoot != null)
+            {
+                UnityEngine.Object.Destroy(_sunJianMoraleAskRoot);
+                _sunJianMoraleAskRoot = null;
+            }
+        }
+
+        /// <summary>【江东猛虎】出牌阶段 End：先结算本阶段结束时士气+1，再询问己方是否消耗士气；联机或敌方跳过询问。</summary>
+        public static void RunJiangDongMengHuPlayPhaseEndThen(BattleState state, bool playPhaseOwnerIsPlayer, System.Action continueAfter)
+        {
+            if (continueAfter == null)
+                return;
+            if (state == null)
+            {
+                continueAfter();
+                return;
+            }
+
+            bool match = state.PendingSunJianMoraleRestoreAmount > 0
+                && state.PendingSunJianMoraleRestorePlayPhaseIndex == state.CurrentPlayPhaseIndex
+                && state.PendingSunJianMoraleRestoreForSideIsPlayer == playPhaseOwnerIsPlayer;
+
+            if (!match)
+            {
+                continueAfter();
+                return;
+            }
+
+            SideState side = state.GetSide(playPhaseOwnerIsPlayer);
+            int add = state.PendingSunJianMoraleRestoreAmount;
+            OfflineSkillEngine.ClearPendingSunJianMoraleRestoreAfterResolved(state);
+            int beforeMorale = side.Morale;
+            side.Morale = Mathf.Min(side.MoraleCap, side.Morale + add);
+            int gained = side.Morale - beforeMorale;
+            BattleFlowLog.Add(
+                BattlePhaseManager.FormatFlowTurnBracketForBattleLog(state.IsPlayerTurn)
+                + "\u3010\u6c5f\u4e1c\u731b\u864e\u3011\u672c\u51fa\u724c\u9636\u6bb5\u7ed3\u675f\uff0c\u58eb\u6c14+"
+                + gained
+                + "\u3002");
+            RefreshAllFromState();
+
+            if (_isOnlineMode || !playPhaseOwnerIsPlayer || side.Morale <= 0)
+            {
+                continueAfter();
+                return;
+            }
+
+            void openAsk()
+            {
+                if (_root == null)
+                {
+                    continueAfter();
+                    return;
+                }
+
+                TearDownSunJianMoraleAskPopup();
+                _sunJianMoraleAskRoot = new GameObject("SunJianMoraleAsk");
+                _sunJianMoraleAskRoot.transform.SetParent(_root.transform, false);
+                var rootRt = _sunJianMoraleAskRoot.AddComponent<RectTransform>();
+                SetFullRect(rootRt);
+                var cvs = _sunJianMoraleAskRoot.AddComponent<Canvas>();
+                cvs.overrideSorting = true;
+                cvs.sortingOrder = 72;
+                _sunJianMoraleAskRoot.AddComponent<GraphicRaycaster>();
+                var overlay = new GameObject("Overlay");
+                overlay.transform.SetParent(_sunJianMoraleAskRoot.transform, false);
+                SetFullRect(overlay.AddComponent<RectTransform>());
+                overlay.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
+                var overlayBtn = overlay.AddComponent<Button>();
+                overlayBtn.transition = Selectable.Transition.None;
+                overlayBtn.onClick.AddListener(() =>
+                {
+                    TearDownSunJianMoraleAskPopup();
+                    continueAfter();
+                });
+
+                var panel = new GameObject("Panel");
+                panel.transform.SetParent(_sunJianMoraleAskRoot.transform, false);
+                var pr = panel.AddComponent<RectTransform>();
+                pr.anchorMin = pr.anchorMax = new Vector2(0.5f, 0.5f);
+                pr.sizeDelta = new Vector2(480f, 200f);
+                panel.AddComponent<Image>().color = new Color(0.32f, 0.34f, 0.4f, 0.98f);
+                var titleTxt = CreateGameText(
+                    panel.transform,
+                    "\u3010\u6c5f\u4e1c\u731b\u864e\u3011\u662f\u5426\u6d88\u8017\u58eb\u6c14\u4f7f\u7528\u6548\u679c\uff1f",
+                    20,
+                    TextAlignmentOptions.Center);
+                if (titleTxt != null)
+                {
+                    var tr = titleTxt.GetComponent<RectTransform>();
+                    tr.anchorMin = new Vector2(0.06f, 0.55f);
+                    tr.anchorMax = new Vector2(0.94f, 0.92f);
+                    tr.offsetMin = tr.offsetMax = Vector2.zero;
+                }
+
+                void onYes()
+                {
+                    TearDownSunJianMoraleAskPopup();
+                    OpenMoralePopupWithOptionalContinuation(continueAfter);
+                }
+
+                void onCancel()
+                {
+                    TearDownSunJianMoraleAskPopup();
+                    continueAfter();
+                }
+
+                CreateJuShouPopupButton(panel.transform, new Vector2(-110f, -58f), "\u662f", new Color(0.22f, 0.52f, 0.38f, 1f), onYes);
+                CreateJuShouPopupButton(panel.transform, new Vector2(110f, -58f), "\u53d6\u6d88", new Color(0.42f, 0.42f, 0.46f, 1f), onCancel);
+                _sunJianMoraleAskRoot.transform.SetAsLastSibling();
+            }
+
+            openAsk();
         }
 
         private static void BuildSkillReadonlyInfoPopup()
@@ -3151,6 +3576,246 @@ namespace JunzhenDuijue
             _attackPatternPopupRoot.SetActive(true);
         }
 
+        /// <summary>【江东猛虎】二级确认：对子 / 两对（与 <see cref="OfflineSkillEngine.TryConfigureJiangDongMengHu"/> 分支一致）。</summary>
+        private static void OpenJiangDongMenghuAttackPatternPopup(int generalIndex, int skillIndex, string skillName)
+        {
+            if (_attackPatternPopupRoot == null || _state == null || _attackPatternContent == null)
+                return;
+
+            _state.PendingAttackPatternVariant = -1;
+            var cards = _state.ActiveSide.PlayedThisPhase;
+            bool canPair = OfflineSkillEngine.JiangDongMenghuPlayedMatchesPair(cards);
+            bool canTwoPair = OfflineSkillEngine.JiangDongMenghuPlayedMatchesTwoPair(cards);
+
+            foreach (Transform child in _attackPatternContent)
+                UnityEngine.Object.Destroy(child.gameObject);
+
+            if (_attackPatternTitle != null)
+                _attackPatternTitle.text = "\u9009\u62e9\u3010\u6c5f\u4e1c\u731b\u864e\u3011\u724c\u578b";
+
+            string[] btnLabels =
+            {
+                "\u5bf9\u5b50\uff08\u4e24\u5f20\uff09",
+                "\u4e24\u5bf9\uff08\u56db\u5f20\uff09",
+            };
+
+            string[] variantDescLines =
+            {
+                "\u5bf9\u5b50\uff1a\u4f60\u9020\u62102\u70b9\u5175\u5203\u4f24\u5bb3\uff0c\u672c\u51fa\u724c\u9636\u6bb5\u7ed3\u675f\u65f6\u6062\u590d1\u70b9\u58eb\u6c14\u3002",
+                "\u4e24\u5bf9\uff1a\u4f60\u9020\u62106\u70b9\u5175\u5203\u4f24\u5bb3\uff0c\u672c\u51fa\u724c\u9636\u6bb5\u7ed3\u675f\u65f6\u6062\u590d1\u70b9\u58eb\u6c14\u3002",
+            };
+
+            for (int i = 0; i < 2; i++)
+            {
+                int variant = i;
+                bool enabled = i == 0 ? canPair : canTwoPair;
+
+                var row = new GameObject("JiangDongPatternRow_" + i);
+                row.transform.SetParent(_attackPatternContent, false);
+                var rowV = row.AddComponent<VerticalLayoutGroup>();
+                rowV.spacing = 8f;
+                rowV.childAlignment = TextAnchor.UpperCenter;
+                rowV.childControlWidth = true;
+                rowV.childControlHeight = true;
+                rowV.childForceExpandWidth = true;
+                rowV.childForceExpandHeight = false;
+                rowV.padding = new RectOffset(0, 0, 0, 0);
+
+                var rowLe = row.AddComponent<LayoutElement>();
+                rowLe.minHeight = 120f;
+                rowLe.preferredHeight = 128f;
+                rowLe.flexibleHeight = 0f;
+
+                var buttonGo = new GameObject("JiangDongPatternBtn_" + i);
+                buttonGo.transform.SetParent(row.transform, false);
+                var btnLe = buttonGo.AddComponent<LayoutElement>();
+                btnLe.preferredHeight = 50f;
+                btnLe.minHeight = 50f;
+                btnLe.flexibleHeight = 0f;
+                var img = buttonGo.AddComponent<Image>();
+                img.sprite = GetWhiteSprite();
+                img.color = enabled ? new Color(0.22f, 0.48f, 0.82f, 1f) : new Color(0.32f, 0.32f, 0.36f, 0.85f);
+                var btn = buttonGo.AddComponent<Button>();
+                btn.targetGraphic = img;
+                btn.interactable = enabled;
+                btn.onClick.AddListener(() =>
+                {
+                    if (_state == null)
+                        return;
+                    _state.PendingAttackPatternVariant = variant;
+                    CloseAttackPatternPopup();
+                    if (_isOnlineMode)
+                        _ = OnlineClientService.SelectAttackSkillAsync(generalIndex, skillIndex);
+                    else
+                        BattlePhaseManager.NotifyAttackSkillSelected(true, generalIndex, skillIndex, skillName);
+                });
+
+                var btnText = CreateGameText(buttonGo.transform, btnLabels[i], 20);
+                if (btnText != null)
+                    SetFullRect(btnText.GetComponent<RectTransform>());
+
+                var descGo = new GameObject("JiangDongPatternDesc_" + i);
+                descGo.transform.SetParent(row.transform, false);
+                var descLe = descGo.AddComponent<LayoutElement>();
+                descLe.minHeight = 36f;
+                descLe.preferredHeight = -1f;
+                descLe.flexibleHeight = 0f;
+                var descT = CreateGameText(descGo.transform, variantDescLines[i], 14, TextAlignmentOptions.TopLeft);
+                if (descT != null)
+                {
+                    descT.enableWordWrapping = true;
+                    descT.color = new Color(0.82f, 0.86f, 0.9f, 1f);
+                    var dr = descT.GetComponent<RectTransform>();
+                    dr.anchorMin = new Vector2(0f, 1f);
+                    dr.anchorMax = new Vector2(1f, 1f);
+                    dr.pivot = new Vector2(0.5f, 1f);
+                    dr.sizeDelta = new Vector2(0f, 72f);
+                }
+            }
+
+            var backGo = new GameObject("Back");
+            backGo.transform.SetParent(_attackPatternContent, false);
+            var backLe = backGo.AddComponent<LayoutElement>();
+            backLe.preferredHeight = 48f;
+            backLe.minHeight = 48f;
+            var backImg = backGo.AddComponent<Image>();
+            backImg.sprite = GetWhiteSprite();
+            backImg.color = new Color(0.4f, 0.4f, 0.44f, 1f);
+            var backBtn = backGo.AddComponent<Button>();
+            backBtn.targetGraphic = backImg;
+            backBtn.onClick.AddListener(() =>
+            {
+                CloseAttackPatternPopup();
+                OpenPlayerAttackSkillFirstMenu();
+            });
+            var backTxt = CreateGameText(backGo.transform, "\u8fd4\u56de\u4e0a\u4e00\u7ea7", 20);
+            if (backTxt != null)
+                SetFullRect(backTxt.GetComponent<RectTransform>());
+
+            CollapsePlayerHandIfExpanded();
+            _attackPatternPopupRoot.SetActive(true);
+        }
+
+        /// <summary>【转斗千里】二级确认：自由顺子 / 自由同花顺（与 <see cref="OfflineSkillEngine.TryConfigureZhuandouQianLi"/> 一致）。</summary>
+        private static void OpenSunCeZhuandouAttackPatternPopup(int generalIndex, int skillIndex, string skillName)
+        {
+            if (_attackPatternPopupRoot == null || _state == null || _attackPatternContent == null)
+                return;
+
+            _state.PendingAttackPatternVariant = -1;
+            var cards = _state.ActiveSide.PlayedThisPhase;
+            bool canStraight = cards != null && SunCeStraightRules.IsValidSunCeDeclareShape(cards);
+            bool canFlush = cards != null && SunCeStraightRules.IsSunCeStraightFlush(cards);
+
+            foreach (Transform child in _attackPatternContent)
+                UnityEngine.Object.Destroy(child.gameObject);
+
+            if (_attackPatternTitle != null)
+                _attackPatternTitle.text = "\u9009\u62e9\u3010\u8f6c\u6597\u5343\u91cc\u3011\u724c\u578b";
+
+            string[] btnLabels =
+            {
+                "\u81ea\u7531\u987a\u5b50",
+                "\u81ea\u7531\u540c\u82b1\u987a",
+            };
+
+            string[] variantDescLines =
+            {
+                "\u81ea\u7531\u987a\u5b50\uff1a\u6309\u6253\u51fa\u987a\u5e8f\u6784\u6210\u987a\u5b50\u65f6\uff0c\u9020\u6210X\u70b9\u5175\u5203\u4f24\u5bb3\uff08X\u4e3a\u987a\u5b50\u957f\u5ea6\uff09\u3002",
+                "\u81ea\u7531\u540c\u82b1\u987a\uff1a\u5168\u7a0b\u540c\u82b1\u4e14\u987a\u5b50\u65f6\uff0c\u9020\u6210X\u70b9\u5175\u5203\u4f24\u5bb3\u5e76\u7ed3\u7b97\u540e\u6062\u590dX\u70b9\u751f\u547d\u3002",
+            };
+
+            for (int i = 0; i < 2; i++)
+            {
+                int variant = i;
+                bool enabled = i == 0 ? canStraight : canFlush;
+
+                var row = new GameObject("SunCePatternRow_" + i);
+                row.transform.SetParent(_attackPatternContent, false);
+                var rowV = row.AddComponent<VerticalLayoutGroup>();
+                rowV.spacing = 8f;
+                rowV.childAlignment = TextAnchor.UpperCenter;
+                rowV.childControlWidth = true;
+                rowV.childControlHeight = true;
+                rowV.childForceExpandWidth = true;
+                rowV.childForceExpandHeight = false;
+                rowV.padding = new RectOffset(0, 0, 0, 0);
+
+                var rowLe = row.AddComponent<LayoutElement>();
+                rowLe.minHeight = 120f;
+                rowLe.preferredHeight = 128f;
+                rowLe.flexibleHeight = 0f;
+
+                var buttonGo = new GameObject("SunCePatternBtn_" + i);
+                buttonGo.transform.SetParent(row.transform, false);
+                var btnLe = buttonGo.AddComponent<LayoutElement>();
+                btnLe.preferredHeight = 50f;
+                btnLe.minHeight = 50f;
+                btnLe.flexibleHeight = 0f;
+                var img = buttonGo.AddComponent<Image>();
+                img.sprite = GetWhiteSprite();
+                img.color = enabled ? new Color(0.22f, 0.48f, 0.82f, 1f) : new Color(0.32f, 0.32f, 0.36f, 0.85f);
+                var btn = buttonGo.AddComponent<Button>();
+                btn.targetGraphic = img;
+                btn.interactable = enabled;
+                btn.onClick.AddListener(() =>
+                {
+                    if (_state == null)
+                        return;
+                    _state.PendingAttackPatternVariant = variant;
+                    CloseAttackPatternPopup();
+                    if (_isOnlineMode)
+                        _ = OnlineClientService.SelectAttackSkillAsync(generalIndex, skillIndex);
+                    else
+                        BattlePhaseManager.NotifyAttackSkillSelected(true, generalIndex, skillIndex, skillName);
+                });
+
+                var btnText = CreateGameText(buttonGo.transform, btnLabels[i], 20);
+                if (btnText != null)
+                    SetFullRect(btnText.GetComponent<RectTransform>());
+
+                var descGo = new GameObject("SunCePatternDesc_" + i);
+                descGo.transform.SetParent(row.transform, false);
+                var descLe = descGo.AddComponent<LayoutElement>();
+                descLe.minHeight = 36f;
+                descLe.preferredHeight = -1f;
+                descLe.flexibleHeight = 0f;
+                var descT = CreateGameText(descGo.transform, variantDescLines[i], 14, TextAlignmentOptions.TopLeft);
+                if (descT != null)
+                {
+                    descT.enableWordWrapping = true;
+                    descT.color = new Color(0.82f, 0.86f, 0.9f, 1f);
+                    var dr = descT.GetComponent<RectTransform>();
+                    dr.anchorMin = new Vector2(0f, 1f);
+                    dr.anchorMax = new Vector2(1f, 1f);
+                    dr.pivot = new Vector2(0.5f, 1f);
+                    dr.sizeDelta = new Vector2(0f, 72f);
+                }
+            }
+
+            var backGo = new GameObject("Back");
+            backGo.transform.SetParent(_attackPatternContent, false);
+            var backLe = backGo.AddComponent<LayoutElement>();
+            backLe.preferredHeight = 48f;
+            backLe.minHeight = 48f;
+            var backImg = backGo.AddComponent<Image>();
+            backImg.sprite = GetWhiteSprite();
+            backImg.color = new Color(0.4f, 0.4f, 0.44f, 1f);
+            var backBtn = backGo.AddComponent<Button>();
+            backBtn.targetGraphic = backImg;
+            backBtn.onClick.AddListener(() =>
+            {
+                CloseAttackPatternPopup();
+                OpenPlayerAttackSkillFirstMenu();
+            });
+            var backTxt = CreateGameText(backGo.transform, "\u8fd4\u56de\u4e0a\u4e00\u7ea7", 20);
+            if (backTxt != null)
+                SetFullRect(backTxt.GetComponent<RectTransform>());
+
+            CollapsePlayerHandIfExpanded();
+            _attackPatternPopupRoot.SetActive(true);
+        }
+
         private static void CommitAttackSkillAfterOptionalPatternPopup(int generalIndex, int skillIndex, string skillName)
         {
             if (_state == null)
@@ -3176,6 +3841,35 @@ namespace JunzhenDuijue
 
                 string ocardId = oside.GeneralCardIds[generalIndex] ?? string.Empty;
                 string oSkillKey = SkillRuleHelper.MakeSkillKey(ocardId, skillIndex);
+                if (string.Equals(oSkillKey, "NO007_0", System.StringComparison.Ordinal))
+                {
+                    var jz = _state.ActiveSide.PlayedThisPhase;
+                    if (jz == null
+                        || (!OfflineSkillEngine.JiangDongMenghuPlayedMatchesPair(jz) && !OfflineSkillEngine.JiangDongMenghuPlayedMatchesTwoPair(jz)))
+                    {
+                        ToastUI.Show("\u6253\u51fa\u533a\u4e0d\u7b26\u5408\u3010\u6c5f\u4e1c\u731b\u864e\u3011\u5bf9\u5b50\u6216\u4e24\u5bf9\u6761\u4ef6", 2.4f, pauseGameWhileVisible: false);
+                        return;
+                    }
+
+                    OfflineSkillEngine.AutoPickJiangDongMenghuVariant(_state, jz);
+                    _ = OnlineClientService.SelectAttackSkillAsync(generalIndex, skillIndex);
+                    return;
+                }
+
+                if (string.Equals(oSkillKey, "NO008_0", System.StringComparison.Ordinal))
+                {
+                    var oz = _state.ActiveSide.PlayedThisPhase;
+                    if (oz == null || !SunCeStraightRules.IsValidSunCeDeclareShape(oz))
+                    {
+                        ToastUI.Show("\u6253\u51fa\u533a\u724c\u4e0d\u7b26\u5408\u3010\u8f6c\u6597\u5343\u91cc\u3011\u6761\u4ef6", 2.4f, pauseGameWhileVisible: false);
+                        return;
+                    }
+
+                    OfflineSkillEngine.AutoPickSunCeZhuandouVariant(_state, oz);
+                    _ = OnlineClientService.SelectAttackSkillAsync(generalIndex, skillIndex);
+                    return;
+                }
+
                 if (string.Equals(oSkillKey, "NO002_0", System.StringComparison.Ordinal))
                 {
                     CloseChoicePopup();
@@ -3224,6 +3918,35 @@ namespace JunzhenDuijue
 
             string cardId = side.GeneralCardIds[generalIndex] ?? string.Empty;
             string skillKey = SkillRuleHelper.MakeSkillKey(cardId, skillIndex);
+            if (string.Equals(skillKey, "NO007_0", System.StringComparison.Ordinal))
+            {
+                var jplayed = _state.ActiveSide.PlayedThisPhase;
+                if (jplayed == null
+                    || (!OfflineSkillEngine.JiangDongMenghuPlayedMatchesPair(jplayed) && !OfflineSkillEngine.JiangDongMenghuPlayedMatchesTwoPair(jplayed)))
+                {
+                    ToastUI.Show("\u6253\u51fa\u533a\u4e0d\u7b26\u5408\u3010\u6c5f\u4e1c\u731b\u864e\u3011\u5bf9\u5b50\u6216\u4e24\u5bf9\u6761\u4ef6\uff0c\u8bf7\u91cd\u65b0\u51fa\u724c\u6216\u9009\u62e9\u5176\u4ed6\u653b\u51fb\u6280", 2.4f, pauseGameWhileVisible: false);
+                    return;
+                }
+
+                CloseChoicePopup();
+                OpenJiangDongMenghuAttackPatternPopup(generalIndex, skillIndex, skillName);
+                return;
+            }
+
+            if (string.Equals(skillKey, "NO008_0", System.StringComparison.Ordinal))
+            {
+                var zplayed = _state.ActiveSide.PlayedThisPhase;
+                if (zplayed == null || !SunCeStraightRules.IsValidSunCeDeclareShape(zplayed))
+                {
+                    ToastUI.Show("\u6253\u51fa\u533a\u724c\u4e0d\u7b26\u5408\u3010\u8f6c\u6597\u5343\u91cc\u3011\u6761\u4ef6\uff0c\u8bf7\u91cd\u65b0\u51fa\u724c\u6216\u9009\u62e9\u5176\u4ed6\u653b\u51fb\u6280", 2.4f, pauseGameWhileVisible: false);
+                    return;
+                }
+
+                CloseChoicePopup();
+                OpenSunCeZhuandouAttackPatternPopup(generalIndex, skillIndex, skillName);
+                return;
+            }
+
             if (string.Equals(skillKey, "NO002_0", System.StringComparison.Ordinal))
             {
                 CloseChoicePopup();
@@ -6012,13 +6735,23 @@ namespace JunzhenDuijue
             RefreshAllFromState();
         }
 
+        private static bool SunCeAllowsAppendForActivePlayer(PokerCard cardToAdd)
+        {
+            if (_state == null || _isOnlineMode)
+                return true;
+            if (!OfflineSkillEngine.SideHasFaceUpSunCeZhuandou(_state, true))
+                return true;
+            return SunCeStraightRules.AllowsSunCeStackAppendAfterAdd(_state.Player.PlayedThisPhase, cardToAdd);
+        }
+
         /// <summary> 闂備礁鎲￠崹鐓庘枍閿濆棙娅犳繝闈涱儐閳锋捇鏌ら崨濠庡晱闁哥偠妫勯埥澶愬箼閸愩劌浼庣紓浣介哺缁诲嫭绂嶉幖浣稿耿婵☆垯璀﹂弶褰掓⒑缂佹﹩娈斿┑鍌涙⒒閸掓帡鎮╃拠鑼吋闁诲函缍嗛崜娆撀烽崒鐐寸厱闁哄稁鍓氶鐘崇濞戙垺鐓曢柟鐑樻尰缁舵煡鏌涢幋顖滅瘈妤犵偛绉归獮姗€宕橀崣澶屾闂備礁鎲￠悧妤佺娴犲鐒垫い鎺嗗亾闁稿﹤缍婇幆渚€鍨鹃弬銉︾亖闂傚倸鐗婄粙鎴澬掓径鎰厽婵°倐鍋撻柣顓炲€歌灒濞达絿纭堕弸鏃堟煕椤垵浜濆ù鐘趁…鍧楁嚋閻㈡鏆℃繝鈷€宥囩暤鐎?MaxPlayPerPhase 闁诲孩顔栭崰姘叏娴兼潙鐒?</summary>
         public static void MoveHandCardToPlayedZone(int handIndex)
         {
             if (_state == null || !_state.IsPlayerTurn || _state.CurrentPhase != BattlePhase.Main || _state.CurrentPhaseStep != PhaseStep.Main) return;
             if (IsPlayerNonPassiveInputBlocked())
                 return;
-            if (_state.Player.CountNonGeneralCardsInPlayedZone() >= BattleState.MaxPlayPerPhase) return;
+            int playCap = _isOnlineMode ? BattleState.MaxPlayPerPhase : OfflineSkillEngine.GetMaxNonGeneralPlayCapForSide(_state, true);
+            if (_state.Player.CountNonGeneralCardsInPlayedZone() >= playCap) return;
             if (handIndex < 0 || handIndex >= _state.Player.Hand.Count) return;
 
             var cardPreview = _state.Player.Hand[handIndex];
@@ -6041,6 +6774,12 @@ namespace JunzhenDuijue
                     }
 
                     var card = _state.Player.Hand[handIndex];
+                    if (!SunCeAllowsAppendForActivePlayer(card))
+                    {
+                        ToastUI.Show("\u51fa\u724c\u4e0d\u7b26\u5408\u81ea\u7531\u987a\u5b50/\u81ea\u7531\u540c\u82b1\u987a\u89c4\u5219\uff0c\u4e0d\u80fd\u51fa\u724c", 2.2f, pauseGameWhileVisible: false);
+                        return;
+                    }
+
                     _state.Player.Hand.RemoveAt(handIndex);
                     card.ChaShiCourtPlayedAsTen = useAsTen;
                     _state.Player.PlayedThisPhase.Add(card);
@@ -6056,6 +6795,12 @@ namespace JunzhenDuijue
             }
 
             var card2 = _state.Player.Hand[handIndex];
+            if (!SunCeAllowsAppendForActivePlayer(card2))
+            {
+                ToastUI.Show("\u51fa\u724c\u4e0d\u7b26\u5408\u81ea\u7531\u987a\u5b50/\u81ea\u7531\u540c\u82b1\u987a\u89c4\u5219\uff0c\u4e0d\u80fd\u51fa\u724c", 2.2f, pauseGameWhileVisible: false);
+                return;
+            }
+
             _state.Player.Hand.RemoveAt(handIndex);
             card2.ChaShiCourtPlayedAsTen = false;
             _state.Player.PlayedThisPhase.Add(card2);
@@ -6067,9 +6812,9 @@ namespace JunzhenDuijue
         {
             if (_state == null)
                 return;
-            PokerCard revealed = _state.PendingDefenseBamenReveal;
-            if (revealed == null)
+            if (!_state.PendingDefenseBamenReveal.HasValue)
                 return;
+            PokerCard revealed = _state.PendingDefenseBamenReveal.Value;
 
             var defSide = _state.GetSide(defenderIsPlayer);
             int gi = _state.PendingDefenseGeneralIndex;
@@ -6100,12 +6845,23 @@ namespace JunzhenDuijue
             {
                 if (_state == null)
                     return;
-                if (_state.PendingDefenseBamenReveal != revealed)
+                if (!_state.PendingDefenseBamenReveal.HasValue || !_state.PendingDefenseBamenReveal.Value.SamePhysicalCard(revealed))
                     return;
                 revealed.ChaShiCourtPlayedAsTen = useAsTen;
                 _state.PendingDefenseBamenReveal = null;
-                OfflineSkillEngine.FinishBamenJinsuoAfterReveal(_state, defenderIsPlayer, revealed, defenseCardId, rule, capRank, bonusReduce);
-                BattlePhaseManager.CompleteDefenseDeclareAfterDeferredBamen(defenderIsPlayer, gi, si);
+                OfflineSkillEngine.FinishBamenJinsuoAfterReveal(
+                    _state,
+                    defenderIsPlayer,
+                    revealed,
+                    defenseCardId,
+                    rule,
+                    capRank,
+                    bonusReduce,
+                    () =>
+                    {
+                        BattlePhaseManager.CompleteDefenseDeclareAfterDeferredBamen(defenderIsPlayer, gi, si);
+                        RefreshAllFromState();
+                    });
                 RefreshAllFromState();
             }
 
@@ -6240,6 +6996,9 @@ namespace JunzhenDuijue
         private static float _huBuGuanYouPrevTimeScale = 1f;
         private static int _huBuGuanYouSelectedHandIndex = -1;
         private static Action _huBuGuanYouOnComplete;
+        private static GameObject _hubJuYingYangPopupRoot;
+        private static float _hubJuYingYangPrevTimeScale = 1f;
+        private static Action _hubJuYingYangOnComplete;
         private static GameObject _nonAttackDamageTargetPickRoot;
         private static float _nonAttackDamageTargetPickPrevTimeScale = 1f;
         private static System.Action _nonAttackDamageTargetPickOnComplete;
@@ -6250,6 +7009,10 @@ namespace JunzhenDuijue
         /// <summary>【虎步关右】选择弹窗是否打开（用于屏蔽士气等）。</summary>
         public static bool IsHuBuGuanYouPopupVisible() =>
             _huBuGuanYouPopupRoot != null && _huBuGuanYouPopupRoot.activeSelf;
+
+        /// <summary>【虎踞鹰扬】询问弹窗是否打开。</summary>
+        public static bool IsHubJuYingYangPopupVisible() =>
+            _hubJuYingYangPopupRoot != null && _hubJuYingYangPopupRoot.activeSelf;
 
         /// <summary>非攻击技伤害目标选择（如【仁者无敌】黑色）弹窗是否打开。</summary>
         public static bool IsNonAttackDamageTargetPickVisible() =>
@@ -6628,6 +7391,94 @@ namespace JunzhenDuijue
                 _huBuGuanYouOnComplete = null;
         }
 
+        private static void FinishHubJuYingYangOfferImmediate()
+        {
+            Action cb = _hubJuYingYangOnComplete;
+            _hubJuYingYangOnComplete = null;
+            cb?.Invoke();
+        }
+
+        private static void TearDownHubJuYingYangOfferPopup(bool invokeComplete)
+        {
+            if (_hubJuYingYangPopupRoot != null)
+            {
+                UnityEngine.Object.Destroy(_hubJuYingYangPopupRoot);
+                _hubJuYingYangPopupRoot = null;
+            }
+
+            Time.timeScale = _hubJuYingYangPrevTimeScale <= 0f ? 1f : _hubJuYingYangPrevTimeScale;
+            if (invokeComplete)
+                FinishHubJuYingYangOfferImmediate();
+            else
+                _hubJuYingYangOnComplete = null;
+        }
+
+        /// <summary>【虎踞鹰扬】将于攻击宣言横幅前询问；关闭或取消后仍结束本次询问窗口。</summary>
+        public static void BeginHubJuYingYangOffer(Action onComplete)
+        {
+            if (_root == null || _state == null)
+            {
+                onComplete?.Invoke();
+                return;
+            }
+
+            TearDownHubJuYingYangOfferPopup(false);
+            _hubJuYingYangOnComplete = onComplete;
+            _hubJuYingYangPrevTimeScale = Time.timeScale;
+            Time.timeScale = 0f;
+
+            var root = new GameObject("HubJuYingYangPopup");
+            root.transform.SetParent(_root.transform, false);
+            _hubJuYingYangPopupRoot = root;
+            var rootRt = root.AddComponent<RectTransform>();
+            SetFullRect(rootRt);
+            var cvs = root.AddComponent<Canvas>();
+            cvs.overrideSorting = true;
+            cvs.sortingOrder = 61;
+            root.AddComponent<GraphicRaycaster>();
+
+            var overlay = new GameObject("Overlay");
+            overlay.transform.SetParent(root.transform, false);
+            SetFullRect(overlay.AddComponent<RectTransform>());
+            overlay.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
+            var overlayBtn = overlay.AddComponent<Button>();
+            overlayBtn.transition = Selectable.Transition.None;
+            overlayBtn.onClick.AddListener(() => TearDownHubJuYingYangOfferPopup(true));
+
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(root.transform, false);
+            var pr = panel.AddComponent<RectTransform>();
+            pr.anchorMin = pr.anchorMax = new Vector2(0.5f, 0.5f);
+            pr.sizeDelta = new Vector2(520f, 220f);
+            panel.AddComponent<Image>().color = new Color(0.14f, 0.16f, 0.2f, 1f);
+
+            var titleTxt = CreateGameText(
+                panel.transform,
+                "\u3010\u5b59\u7b56\u3011\u662f\u5426\u53d1\u52a8\u3010\u864e\u8e1f\u9e70\u626c\u3011\uff1f\u6d88\u80171\u70b9\u58eb\u6c14\uff0c\u4f7f\u672c\u6b21\u5c06\u8981\u9020\u6210\u7684\u5175\u5203\u4f24\u5bb3+3\u3002",
+                18,
+                TextAlignmentOptions.Center);
+            if (titleTxt != null)
+            {
+                var tr = titleTxt.GetComponent<RectTransform>();
+                tr.anchorMin = new Vector2(0.06f, 0.42f);
+                tr.anchorMax = new Vector2(0.94f, 0.9f);
+                tr.offsetMin = tr.offsetMax = Vector2.zero;
+            }
+
+            void onLaunch()
+            {
+                if (_state != null)
+                    OfflineSkillEngine.ApplyHubJuYingYangPlayerConfirm(_state, true);
+                TearDownHubJuYingYangOfferPopup(true);
+            }
+
+            void onSkip() => TearDownHubJuYingYangOfferPopup(true);
+
+            CreateJuShouPopupButton(panel.transform, new Vector2(-120f, -62f), "\u53d1\u52a8", new Color(0.22f, 0.52f, 0.38f, 1f), onLaunch);
+            CreateJuShouPopupButton(panel.transform, new Vector2(120f, -62f), "\u53d6\u6d88", new Color(0.42f, 0.42f, 0.46f, 1f), onSkip);
+            root.transform.SetAsLastSibling();
+        }
+
         private static void CloseChaShiCourtRankChoicePopup()
         {
             if (_chaShiChoicePopupRoot != null)
@@ -6779,6 +7630,12 @@ namespace JunzhenDuijue
             pc.GeneralSlotIndex = generalIndex;
             pc.PlayedRoleDisplayName = roleName;
 
+            if (!SunCeAllowsAppendForActivePlayer(pc))
+            {
+                ToastUI.Show("\u51fa\u724c\u4e0d\u7b26\u5408\u81ea\u7531\u987a\u5b50/\u81ea\u7531\u540c\u82b1\u987a\u89c4\u5219\uff0c\u4e0d\u80fd\u51fa\u724c", 2.2f, pauseGameWhileVisible: false);
+                return false;
+            }
+
             _state.Player.PlayedThisPhase.Add(pc);
             RefreshAllFromState();
             return true;
@@ -6788,7 +7645,12 @@ namespace JunzhenDuijue
         {
             CloseSkillReadonlyInfoPopup();
             TearDownHuBuGuanYouPopup(false);
+            TearDownHubJuYingYangOfferPopup(false);
             TearDownJuShouOfferPopup();
+            TearDownSunJianMoraleAskPopup();
+            _moralePopupOnFullyClosed = null;
+            if (_moralePopupRoot != null)
+                _moralePopupRoot.SetActive(false);
             TearDownDiscardStartRenZheWuDiOfferPopup();
             HideBattleIndicatorIntroTooltip();
             DestroyNonAttackDamageTargetPickRoot();
