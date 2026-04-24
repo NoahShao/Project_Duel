@@ -416,6 +416,20 @@ namespace JunzhenDuijue
             return side.FlipGeneralFaceDown(generalIndex, IsPlayerTurn == isPlayerSide);
         }
 
+        /// <summary>
+        /// 「翻面」语义：正面武将翻至背面（与 <see cref="TryFlipGeneral"/> 相同）；已背面则翻回正面并清除自动翻回计数。
+        /// 与「将牌当牌打出」结算后仅向下翻面不同，技能类翻面触发通常应支持双向。
+        /// </summary>
+        public bool TryToggleGeneralFlippedState(bool isPlayerSide, int generalIndex)
+        {
+            var side = GetSide(isPlayerSide);
+            if (generalIndex < 0 || generalIndex >= side.GeneralFaceUp.Count)
+                return false;
+            if (side.IsGeneralFaceUp(generalIndex))
+                return side.FlipGeneralFaceDown(generalIndex, IsPlayerTurn == isPlayerSide);
+            return side.UnflipGeneralFromMorale(generalIndex);
+        }
+
         public void CompleteCurrentTurn()
         {
             ActiveSide.RecoverGeneralsAtOwnTurnEnd();

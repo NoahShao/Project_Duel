@@ -2286,15 +2286,18 @@ namespace JunzhenDuijue
             var rows = new List<(int idx, string label)>();
             for (int i = 0; i < enemy.GeneralCardIds.Count; i++)
             {
-                if (!enemy.IsGeneralFaceUp(i))
+                if (string.IsNullOrEmpty(enemy.GeneralCardIds[i]))
                     continue;
                 string nm = GetGeneralDisplayName(!ownerIsPlayer, i);
-                rows.Add((i, nm));
+                string rowHint = enemy.IsGeneralFaceUp(i)
+                    ? "\uff08\u7ffb\u81f3\u80cc\u9762\uff09"
+                    : "\uff08\u7ffb\u56de\u6b63\u9762\uff09";
+                rows.Add((i, nm + rowHint));
             }
 
             if (rows.Count == 0)
             {
-                ToastUI.Show("\u654c\u65b9\u6ca1\u6709\u53ef\u7ffb\u9762\u7684\u6b63\u9762\u89d2\u8272", 2.2f, pauseGameWhileVisible: false);
+                ToastUI.Show("\u654c\u65b9\u6ca1\u6709\u53ef\u9009\u6b66\u5c06", 2.2f, pauseGameWhileVisible: false);
                 onDone?.Invoke();
                 return;
             }
@@ -2357,6 +2360,13 @@ namespace JunzhenDuijue
                         return;
                     }
 
+                    var en = ownerIsPlayer ? _state.Opponent : _state.Player;
+                    bool targetWasFaceUp = en != null
+                        && enemyIdx >= 0
+                        && enemyIdx < en.GeneralFaceUp.Count
+                        && en.IsGeneralFaceUp(enemyIdx);
+                    string targetRoleName = GetGeneralDisplayName(!ownerIsPlayer, enemyIdx);
+
                     if (!OfflineSkillEngine.TryApplySunQuanChangJiang(_state, ownerIsPlayer, enemyIdx, out string err))
                     {
                         ToastUI.Show(string.IsNullOrEmpty(err) ? "\u53d1\u52a8\u5931\u8d25" : err, 2.4f, pauseGameWhileVisible: false);
@@ -2367,13 +2377,20 @@ namespace JunzhenDuijue
                     string sunQuanRole = SkillEffectBanner.GetRoleNameFromCardId("NO009");
                     if (string.IsNullOrWhiteSpace(sunQuanRole))
                         sunQuanRole = "\u5b59\u6743";
+                    string bannerDetail = targetWasFaceUp
+                        ? "\u5f03\u7f6e\u6240\u6709\u624b\u724c\uff0c\u5c06\u654c\u65b9\u3010"
+                            + targetRoleName
+                            + "\u3011\u7ffb\u81f3\u80cc\u9762"
+                        : "\u5f03\u7f6e\u6240\u6709\u624b\u724c\uff0c\u4f7f\u654c\u65b9\u3010"
+                            + targetRoleName
+                            + "\u3011\u7ffb\u56de\u6b63\u9762";
                     TearDownDiscardStartSunQuanChangJiangOfferPopup();
                     SkillEffectBanner.Show(
                         ownerIsPlayer,
                         true,
                         sunQuanRole,
                         "\u957f\u6c5f\u5929\u9669",
-                        "\u5f03\u7f6e\u6240\u6709\u624b\u724c\u5e76\u7ffb\u9762\u654c\u65b9\u3010" + lab + "\u3011",
+                        bannerDetail,
                         () =>
                         {
                             RefreshAllFromState();

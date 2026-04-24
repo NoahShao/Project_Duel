@@ -521,14 +521,14 @@ namespace JunzhenDuijue
             var enemy = state.GetSide(!discardOwnerIsPlayer);
             for (int i = 0; i < enemy.GeneralCardIds.Count; i++)
             {
-                if (enemy.IsGeneralFaceUp(i))
+                if (!string.IsNullOrEmpty(enemy.GeneralCardIds[i]))
                     return true;
             }
 
             return false;
         }
 
-        /// <summary>执行【长江天险】：弃置己方全部手牌，翻面敌方指定武将（须正面）。</summary>
+        /// <summary>执行【长江天险】：弃置己方全部手牌，对敌方一名武将执行「翻面」（正面→背面 / 背面→正面）。</summary>
         public static bool TryApplySunQuanChangJiang(BattleState state, bool ownerIsPlayer, int enemyGeneralIndex, out string error)
         {
             error = string.Empty;
@@ -569,12 +569,15 @@ namespace JunzhenDuijue
             }
 
             var enemy = state.GetSide(!ownerIsPlayer);
-            if (enemyGeneralIndex < 0 || enemyGeneralIndex >= enemy.GeneralCardIds.Count || !enemy.IsGeneralFaceUp(enemyGeneralIndex))
+            if (enemyGeneralIndex < 0
+                || enemyGeneralIndex >= enemy.GeneralCardIds.Count
+                || string.IsNullOrEmpty(enemy.GeneralCardIds[enemyGeneralIndex]))
             {
                 error = "\u65e0\u6cd5\u7ffb\u8f6c\u8be5\u654c\u65b9\u89d2\u8272";
                 return false;
             }
 
+            bool enemyWasFaceUp = enemy.IsGeneralFaceUp(enemyGeneralIndex);
             int discarded = side.Hand.Count;
             while (side.Hand.Count > 0)
             {
@@ -583,7 +586,7 @@ namespace JunzhenDuijue
                 side.DiscardPile.Add(c);
             }
 
-            if (!state.TryFlipGeneral(!ownerIsPlayer, enemyGeneralIndex))
+            if (!state.TryToggleGeneralFlippedState(!ownerIsPlayer, enemyGeneralIndex))
             {
                 error = "\u7ffb\u9762\u5931\u8d25";
                 return false;
@@ -592,6 +595,7 @@ namespace JunzhenDuijue
             side.TriggeredSkillKeysThisTurn.Add(key);
             string enemyRole = SkillEffectBanner.GetRoleNameFromCardId(enemy.GeneralCardIds[enemyGeneralIndex] ?? string.Empty);
             string who = ownerIsPlayer ? "\u5df1\u65b9" : "\u654c\u65b9";
+            string flipNote = enemyWasFaceUp ? "\u7ffb\u9762" : "\u7ffb\u56de\u6b63\u9762";
             BattleFlowLog.Add(
                 BattlePhaseManager.FormatFlowTurnBracketForBattleLog(state.IsPlayerTurn)
                 + "\u5f03\u724c\u9636\u6bb5\u5f00\u59cb\uff0c"
@@ -600,7 +604,9 @@ namespace JunzhenDuijue
                 + discarded
                 + "\u5f20\u624b\u724c\uff0c\u5bf9\u65b9\u3010"
                 + enemyRole
-                + "\u3011\u7ffb\u9762\u3002");
+                + "\u3011"
+                + flipNote
+                + "\u3002");
             return true;
         }
 
