@@ -36,6 +36,12 @@ namespace JunzhenDuijue
         /// <summary>【八门金锁】翻开牌库顶，小点数减伤否则入手牌。</summary>
         public const string DefenseRevealSmall8ReduceElseGainEffectId = "defense_reveal_small8_reduce2_else_draw";
 
+        /// <summary>【孙权·制衡】主要阶段限一次：弃任意张手牌并摸等量。</summary>
+        public const string SunQuanZhihengEffectId = "primary_discard_any_draw_same";
+
+        /// <summary>【孙权·长江天险】弃牌阶段开始时：弃置所有手牌并翻面一名敌方角色。</summary>
+        public const string SunQuanChangJiangEffectId = "discard_start_discard_all_flip_enemy";
+
         private const string Hearts = "\u7ea2\u6843";
         private const string Diamonds = "\u65b9\u7247";
         private const string Spades = "\u9ed1\u6843";
@@ -386,10 +392,216 @@ namespace JunzhenDuijue
                     SkillEffectBanner.Show(sideIsPlayer, true, SkillEffectBanner.GetRoleNameFromCardId(cardId), rule.SkillName, message);
                     return true;
 
+                case SunQuanZhihengEffectId:
+                    message = "\u8bf7\u5728\u5f39\u7a97\u4e2d\u9009\u62e9\u624b\u724c";
+                    return false;
+
                 default:
                     message = "\u8be5\u4e3b\u52a8\u6280\u79bb\u7ebf\u6548\u679c\u5c1a\u672a\u5b9e\u73b0";
                     return false;
             }
+        }
+
+        /// <summary>【制衡】是否可在当前主要阶段发动（含手牌与次数）。</summary>
+        public static bool CanSunQuanZhiheng(BattleState state, bool sideIsPlayer, int generalIndex, int skillIndex, out string reason)
+        {
+            reason = string.Empty;
+            if (state == null || !sideIsPlayer)
+                return false;
+            if (state.CurrentPhase != BattlePhase.Primary || state.CurrentPhaseStep != PhaseStep.Main || state.IsPlayerTurn != sideIsPlayer)
+            {
+                reason = "\u4ec5\u5728\u4f60\u7684\u4e3b\u8981\u9636\u6bb5\u53ef\u7528";
+                return false;
+            }
+
+            if (!TryGetFaceUpRule(state, sideIsPlayer, generalIndex, skillIndex, out string cardId, out SkillRuleEntry rule) || rule == null)
+            {
+                reason = "\u672a\u627e\u5230\u6280\u80fd";
+                return false;
+            }
+
+            if (!string.Equals(rule.EffectId, SunQuanZhihengEffectId, StringComparison.Ordinal))
+            {
+                reason = "\u672a\u627e\u5230\u6280\u80fd";
+                return false;
+            }
+
+            var side = state.GetSide(sideIsPlayer);
+            string key = SkillRuleHelper.MakeSkillKey(cardId, skillIndex);
+            if (side.TriggeredSkillKeysThisTurn.Contains(key))
+            {
+                reason = "\u672c\u56de\u5408\u5df2\u53d1\u52a8\u8fc7\u3010\u5236\u8861\u3011";
+                return false;
+            }
+
+            if (side.Hand.Count < 1)
+            {
+                reason = "\u6ca1\u6709\u53ef\u5f03\u7684\u624b\u724c";
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>弃置所选手牌（升序下标），摸等量；登记本回合已发动。</summary>
+        public static bool TryApplySunQuanZhiheng(BattleState state, bool sideIsPlayer, int generalIndex, int skillIndex, List<int> handIndicesAscending, out string error)
+        {
+            error = string.Empty;
+            if (!CanSunQuanZhiheng(state, sideIsPlayer, generalIndex, skillIndex, out error))
+                return false;
+            if (handIndicesAscending == null || handIndicesAscending.Count < 1)
+            {
+                error = "\u81f3\u5c11\u9009\u62e9\u4e00\u5f20\u624b\u724c";
+                return false;
+            }
+
+            var side = state.GetSide(sideIsPlayer);
+            var sorted = new List<int>(handIndicesAscending);
+            sorted.Sort();
+            var seen = new HashSet<int>();
+            for (int i = 0; i < sorted.Count; i++)
+            {
+                int ix = sorted[i];
+                if (ix < 0 || ix >= side.Hand.Count || !seen.Add(ix))
+                {
+                    error = "\u624b\u724c\u9009\u62e9\u65e0\u6548";
+                    return false;
+                }
+            }
+
+            int n = sorted.Count;
+            for (int k = sorted.Count - 1; k >= 0; k--)
+            {
+                int ix = sorted[k];
+                PokerCard c = side.Hand[ix];
+                side.Hand.RemoveAt(ix);
+                side.DiscardPile.Add(c);
+            }
+
+            BattleState.Draw(side, n);
+            if (!TryGetFaceUpRule(state, sideIsPlayer, generalIndex, skillIndex, out string cardId, out SkillRuleEntry rule) || rule == null)
+                return false;
+            side.TriggeredSkillKeysThisTurn.Add(SkillRuleHelper.MakeSkillKey(cardId, skillIndex));
+            BattleFlowLog.Add(
+                BattlePhaseManager.FormatFlowTurnBracketForBattleLog(state.IsPlayerTurn)
+                + "\u4e3b\u8981\u9636\u6bb5\uff0c"
+                + (sideIsPlayer ? "\u5df1\u65b9" : "\u654c\u65b9")
+                + "\u3010\u5236\u8861\u3011\uff1a\u5f03\u7f6e"
+                + n
+                + "\u5f20\u624b\u724c\uff0c\u6478"
+                + n
+                + "\u5f20\u724c\u3002");
+            return true;
+        }
+
+        /// <summary>弃牌阶段开始：离线己方是否可询问【长江天险】。</summary>
+        public static bool CanOfferSunQuanChangJiangDiscardStart(BattleState state, bool discardOwnerIsPlayer)
+        {
+            if (state == null || !discardOwnerIsPlayer || GameUI.IsOnlineBattle())
+                return false;
+            if (!TryFindFaceUpRule(
+                    state,
+                    discardOwnerIsPlayer,
+                    e => string.Equals(e.CardId, "NO009", StringComparison.Ordinal)
+                        && e.SkillIndex == 1
+                        && string.Equals(e.EffectId, SunQuanChangJiangEffectId, StringComparison.Ordinal),
+                    out _,
+                    out _,
+                    out string cid,
+                    out _))
+                return false;
+
+            var side = state.GetSide(discardOwnerIsPlayer);
+            string key = SkillRuleHelper.MakeSkillKey(cid, 1);
+            if (side.TriggeredSkillKeysThisTurn.Contains(key))
+                return false;
+            if (side.Hand.Count < 1)
+                return false;
+
+            var enemy = state.GetSide(!discardOwnerIsPlayer);
+            for (int i = 0; i < enemy.GeneralCardIds.Count; i++)
+            {
+                if (enemy.IsGeneralFaceUp(i))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>执行【长江天险】：弃置己方全部手牌，翻面敌方指定武将（须正面）。</summary>
+        public static bool TryApplySunQuanChangJiang(BattleState state, bool ownerIsPlayer, int enemyGeneralIndex, out string error)
+        {
+            error = string.Empty;
+            if (state == null || !ownerIsPlayer)
+            {
+                error = "\u65e0\u6548";
+                return false;
+            }
+
+            if (!TryFindFaceUpRule(
+                    state,
+                    ownerIsPlayer,
+                    e => string.Equals(e.CardId, "NO009", StringComparison.Ordinal)
+                        && e.SkillIndex == 1
+                        && string.Equals(e.EffectId, SunQuanChangJiangEffectId, StringComparison.Ordinal),
+                    out _,
+                    out _,
+                    out string cid,
+                    out SkillRuleEntry rule)
+                || rule == null)
+            {
+                error = "\u672a\u627e\u5230\u3010\u957f\u6c5f\u5929\u9669\u3011";
+                return false;
+            }
+
+            var side = state.GetSide(ownerIsPlayer);
+            string key = SkillRuleHelper.MakeSkillKey(cid, 1);
+            if (side.TriggeredSkillKeysThisTurn.Contains(key))
+            {
+                error = "\u672c\u56de\u5408\u5df2\u53d1\u52a8\u8fc7";
+                return false;
+            }
+
+            if (side.Hand.Count < 1)
+            {
+                error = "\u81f3\u5c11\u9700\u8981 1 \u5f20\u624b\u724c";
+                return false;
+            }
+
+            var enemy = state.GetSide(!ownerIsPlayer);
+            if (enemyGeneralIndex < 0 || enemyGeneralIndex >= enemy.GeneralCardIds.Count || !enemy.IsGeneralFaceUp(enemyGeneralIndex))
+            {
+                error = "\u65e0\u6cd5\u7ffb\u8f6c\u8be5\u654c\u65b9\u89d2\u8272";
+                return false;
+            }
+
+            int discarded = side.Hand.Count;
+            while (side.Hand.Count > 0)
+            {
+                PokerCard c = side.Hand[0];
+                side.Hand.RemoveAt(0);
+                side.DiscardPile.Add(c);
+            }
+
+            if (!state.TryFlipGeneral(!ownerIsPlayer, enemyGeneralIndex))
+            {
+                error = "\u7ffb\u9762\u5931\u8d25";
+                return false;
+            }
+
+            side.TriggeredSkillKeysThisTurn.Add(key);
+            string enemyRole = SkillEffectBanner.GetRoleNameFromCardId(enemy.GeneralCardIds[enemyGeneralIndex] ?? string.Empty);
+            string who = ownerIsPlayer ? "\u5df1\u65b9" : "\u654c\u65b9";
+            BattleFlowLog.Add(
+                BattlePhaseManager.FormatFlowTurnBracketForBattleLog(state.IsPlayerTurn)
+                + "\u5f03\u724c\u9636\u6bb5\u5f00\u59cb\uff0c"
+                + who
+                + "\u3010\u957f\u6c5f\u5929\u9669\u3011\uff1a\u5f03\u7f6e\u6240\u6709"
+                + discarded
+                + "\u5f20\u624b\u724c\uff0c\u5bf9\u65b9\u3010"
+                + enemyRole
+                + "\u3011\u7ffb\u9762\u3002");
+            return true;
         }
 
         /// <summary>策马牌型判定用素材：将牌打出不计入（与「多带无关牌」一致，只看扑克部分能否成式）。</summary>

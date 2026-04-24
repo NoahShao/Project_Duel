@@ -227,7 +227,9 @@
             "CardId": "NO009",
             "SkillIndex": 0,
             "SkillName": "制衡",
-            "Tags": [],
+            "Tags": [
+                "主动技"
+            ],
             "TriggerHint": "Manual",
             "AllowOnOpponentTurn": false,
             "EffectId": "primary_discard_any_draw_same",
