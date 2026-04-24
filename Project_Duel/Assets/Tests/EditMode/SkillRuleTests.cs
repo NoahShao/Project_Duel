@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using JunzhenDuijue;
 
@@ -30,6 +31,22 @@ namespace JunzhenDuijue.Tests.EditMode
             var rule = SkillRuleLoader.GetRule("NO002", 0);
             Assert.NotNull(rule);
             Assert.AreEqual("NO002_0", rule.SkillKey);
+        }
+
+        /// <summary>【江东猛虎】梅花 J/Q/K + 黑桃 J：划分两对成立时，对子与两对应同时可选（仍打出四张）。</summary>
+        [Test]
+        public void JiangDongMenghu_FourFaceCompositeTwoPair_AllowsPairAndTwoPairChoice()
+        {
+            var cards = new List<PokerCard>
+            {
+                new PokerCard { Suit = "\u6885\u82b1", Rank = 11 },
+                new PokerCard { Suit = "\u6885\u82b1", Rank = 12 },
+                new PokerCard { Suit = "\u6885\u82b1", Rank = 13 },
+                new PokerCard { Suit = "\u9ed1\u6843", Rank = 11 },
+            };
+            Assert.True(PokerPatternRules.IsTwoPairCompositeFour(cards));
+            Assert.True(OfflineSkillEngine.JiangDongMenghuPlayedMatchesTwoPair(cards));
+            Assert.True(OfflineSkillEngine.JiangDongMenghuPlayedMatchesPair(cards));
         }
     }
 }

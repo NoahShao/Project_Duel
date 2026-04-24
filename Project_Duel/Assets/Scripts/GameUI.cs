@@ -3880,7 +3880,10 @@ namespace JunzhenDuijue
                     if (jz == null
                         || (!OfflineSkillEngine.JiangDongMenghuPlayedMatchesPair(jz) && !OfflineSkillEngine.JiangDongMenghuPlayedMatchesTwoPair(jz)))
                     {
+                        CloseChoicePopup();
+                        CloseAttackPatternPopup();
                         ToastUI.Show("\u6253\u51fa\u533a\u4e0d\u7b26\u5408\u3010\u6c5f\u4e1c\u731b\u864e\u3011\u5bf9\u5b50\u6216\u4e24\u5bf9\u6761\u4ef6", 2.4f, pauseGameWhileVisible: false);
+                        NotifyPhaseChanged();
                         return;
                     }
 
@@ -3894,7 +3897,10 @@ namespace JunzhenDuijue
                     var oz = _state.ActiveSide.PlayedThisPhase;
                     if (oz == null || !SunCeStraightRules.IsValidSunCeDeclareShape(oz))
                     {
+                        CloseChoicePopup();
+                        CloseAttackPatternPopup();
                         ToastUI.Show("\u6253\u51fa\u533a\u724c\u4e0d\u7b26\u5408\u3010\u8f6c\u6597\u5343\u91cc\u3011\u6761\u4ef6", 2.4f, pauseGameWhileVisible: false);
+                        NotifyPhaseChanged();
                         return;
                     }
 
@@ -3957,7 +3963,10 @@ namespace JunzhenDuijue
                 if (jplayed == null
                     || (!OfflineSkillEngine.JiangDongMenghuPlayedMatchesPair(jplayed) && !OfflineSkillEngine.JiangDongMenghuPlayedMatchesTwoPair(jplayed)))
                 {
+                    CloseChoicePopup();
+                    CloseAttackPatternPopup();
                     ToastUI.Show("\u6253\u51fa\u533a\u4e0d\u7b26\u5408\u3010\u6c5f\u4e1c\u731b\u864e\u3011\u5bf9\u5b50\u6216\u4e24\u5bf9\u6761\u4ef6\uff0c\u8bf7\u91cd\u65b0\u51fa\u724c\u6216\u9009\u62e9\u5176\u4ed6\u653b\u51fb\u6280", 2.4f, pauseGameWhileVisible: false);
+                    NotifyPhaseChanged();
                     return;
                 }
 
@@ -3971,7 +3980,10 @@ namespace JunzhenDuijue
                 var zplayed = _state.ActiveSide.PlayedThisPhase;
                 if (zplayed == null || !SunCeStraightRules.IsValidSunCeDeclareShape(zplayed))
                 {
+                    CloseChoicePopup();
+                    CloseAttackPatternPopup();
                     ToastUI.Show("\u6253\u51fa\u533a\u724c\u4e0d\u7b26\u5408\u3010\u8f6c\u6597\u5343\u91cc\u3011\u6761\u4ef6\uff0c\u8bf7\u91cd\u65b0\u51fa\u724c\u6216\u9009\u62e9\u5176\u4ed6\u653b\u51fb\u6280", 2.4f, pauseGameWhileVisible: false);
+                    NotifyPhaseChanged();
                     return;
                 }
 

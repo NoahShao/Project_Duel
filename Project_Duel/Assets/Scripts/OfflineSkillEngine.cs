@@ -930,6 +930,13 @@ namespace JunzhenDuijue
             && cards.Count == 2
             && PokerPatternRules.GetComparisonPoint(cards[0]) == PokerPatternRules.GetComparisonPoint(cards[1]);
 
+        /// <summary>
+        /// 四张「划分两对」时仍打出四张牌，但允许宣言为较低伤害的【对子】分支（与二级弹窗一致）。
+        /// </summary>
+        private static bool SunJianPlayedIsPairDamageBranch(List<PokerCard> cards) =>
+            SunJianPlayedIsPair(cards)
+            || (cards != null && cards.Count == 4 && PokerPatternRules.IsTwoPairCompositeFour(cards));
+
         private static bool SunJianPlayedIsTwoPair(List<PokerCard> cards) =>
             cards != null && cards.Count == 4 && PokerPatternRules.IsTwoPairCompositeFour(cards);
 
@@ -960,7 +967,7 @@ namespace JunzhenDuijue
             }
             else if (variant == 0)
             {
-                if (!SunJianPlayedIsPair(cards))
+                if (!SunJianPlayedIsPairDamageBranch(cards))
                     return false;
                 damage = 2;
                 shapeLabel = "\u5bf9\u5b50";
@@ -994,7 +1001,7 @@ namespace JunzhenDuijue
                 state.PendingAttackPatternVariant = 0;
         }
 
-        public static bool JiangDongMenghuPlayedMatchesPair(List<PokerCard> cards) => SunJianPlayedIsPair(cards);
+        public static bool JiangDongMenghuPlayedMatchesPair(List<PokerCard> cards) => SunJianPlayedIsPairDamageBranch(cards);
 
         public static bool JiangDongMenghuPlayedMatchesTwoPair(List<PokerCard> cards) => SunJianPlayedIsTwoPair(cards);
 
@@ -1093,7 +1100,9 @@ namespace JunzhenDuijue
         {
             if (played == null || played.Count < 3 || state == null)
                 return string.Empty;
-            int shown = state.PendingBaseDamage > 0 ? state.PendingBaseDamage : played.Count;
+            if (state.PendingBaseDamage <= 0)
+                return string.Empty;
+            int shown = state.PendingBaseDamage;
             return state.PendingSunCeZhuandouBannerKind switch
             {
                 1 => "\u81ea\u7531\u540c\u82b1\u987a\uff08" + shown + "\u5f20\uff09",
@@ -1235,7 +1244,14 @@ namespace JunzhenDuijue
 
             int declared = Mathf.Max(0, state.PendingBaseDamage + state.PendingAttackBonus + state.PendingReservedAttackerIndicatorBonus);
             bool isGeneric = state.PendingAttackSkillKind == SelectedSkillKind.GenericAttack;
-            if (!isGeneric && declared <= 0 && state.PendingPostResolveDrawToAttacker <= 0 && state.PendingExtraPlayPhasesToGrant <= 0 && !state.PendingIgnoreDefenseReduction)
+            if (!isGeneric
+                && declared <= 0
+                && state.PendingPostResolveDrawToAttacker <= 0
+                && state.PendingPostResolveHealToAttacker <= 0
+                && state.PendingPostResolveMoraleToAttacker <= 0
+                && state.PendingExtraPlayPhasesToGrant <= 0
+                && !state.PendingIgnoreDefenseReduction
+                && state.PendingSunJianMoraleRestoreAmount <= 0)
             {
                 finish();
                 return;
