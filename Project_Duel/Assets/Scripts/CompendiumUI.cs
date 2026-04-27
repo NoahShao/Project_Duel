@@ -1000,7 +1000,7 @@ namespace JunzhenDuijue
                 descText.alignment = TextAlignmentOptions.TopLeft;
                 descText.raycastTarget = true;
                 descText.text = "";
-                descText.enableWordWrapping = true;
+                descText.textWrappingMode = TextWrappingModes.Normal;
                 descText.overflowMode = TextOverflowModes.Overflow;
                 _detailSkillDescs[i] = descText;
 
@@ -1069,7 +1069,7 @@ namespace JunzhenDuijue
             _introModalText.fontSize = IntroModalFontSize;
             _introModalText.color = new Color(0.2f, 0.2f, 0.22f, 1f);
             _introModalText.alignment = TextAlignmentOptions.TopLeft;
-            _introModalText.enableWordWrapping = true;
+            _introModalText.textWrappingMode = TextWrappingModes.Normal;
             _introModalText.overflowMode = TextOverflowModes.Overflow;
             _introModalText.raycastTarget = false;
             var textLe = textGo.AddComponent<LayoutElement>();

@@ -33,7 +33,7 @@ namespace JunzhenDuijue
 
         private static void EnsureEventSystem()
         {
-            if (Object.FindObjectOfType<EventSystem>() == null)
+            if (Object.FindFirstObjectByType<EventSystem>() == null)
             {
                 var go = new GameObject("EventSystem");
                 go.AddComponent<EventSystem>();

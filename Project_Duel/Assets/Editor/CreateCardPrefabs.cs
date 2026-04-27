@@ -120,9 +120,6 @@ namespace JunzhenDuijue.Editor
         /// </summary>
         internal static GameObject CreateCardSlotPrefabRoot()
         {
-            const float CardPixelW = 1016f;
-            const float CardPixelH = 1488f;
-
             var root = new GameObject("CardSlot");
             var rootRect = root.AddComponent<RectTransform>();
             rootRect.sizeDelta = new Vector2(CardWidth, CardHeight);

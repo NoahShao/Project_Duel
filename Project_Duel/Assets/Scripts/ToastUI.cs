@@ -160,7 +160,7 @@ namespace JunzhenDuijue
             _text = textGo.AddComponent<TextMeshProUGUI>();
             if (TMPHelper.GetDefaultFont() != null) _text.font = TMPHelper.GetDefaultFont();
             _text.fontSize = 28;
-            _text.enableWordWrapping = true;
+            _text.textWrappingMode = TextWrappingModes.Normal;
             _text.alignment = TextAlignmentOptions.Center;
             _text.color = Color.white;
             var textRect = textGo.GetComponent<RectTransform>();

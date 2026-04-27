@@ -1,0 +1,16 @@
+{
+  "name": "TMP.Examples.Optional",
+  "rootNamespace": "TMPro.Examples",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "TMP_EXAMPLES_ENABLED"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

@@ -264,7 +264,7 @@ namespace JunzhenDuijue
         public const int MaxMorale = 2;
         public const int MaxPlayPerPhase = 5;
         /// <summary>【孙策·转斗千里】在场时，单出牌阶段非将打出区张数上限（将牌当牌不计入）。</summary>
-        public const int SunCeMaxNonGeneralPlayCap = 20;
+        public const int SunCeMaxNonGeneralPlayCap = 13;
         /// <summary>通用攻击枚举子集时参与组合的上限（含角色代理牌）；避免张数过大时 2^n 爆炸。</summary>
         public const int MaxCardsEvaluatedForGenericAttack = 12;
 

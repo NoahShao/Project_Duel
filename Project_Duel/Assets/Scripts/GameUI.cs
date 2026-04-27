@@ -2506,11 +2506,37 @@ namespace JunzhenDuijue
             dim.transform.SetParent(_sunQuanZhengPopupRoot.transform, false);
             SetFullRect(dim.AddComponent<RectTransform>());
             dim.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.5f);
+            const float zhengPanelW = 1120f;
+            const float zhengHeaderH = 128f;
+            const float zhengFooterBlockH = 80f;
+            const float zhengSectionGap = 10f;
+            const float zhengRowSpacing = 14f;
+            const int zhengGridPadV = 18;
+            const int zhengGridPadH = 20;
+            float cardW = 88f;
+
+            var hand = _state.Player.Hand;
+            int nHand = hand.Count;
+            float scrollViewportW = zhengPanelW - 24f * 2f;
+            float gridInnerW = Mathf.Max(120f, scrollViewportW - zhengGridPadH * 2f);
+            int maxColsByWidth = Mathf.Max(1, Mathf.FloorToInt((gridInnerW + zhengRowSpacing) / (cardW + zhengRowSpacing)));
+            int cols = nHand <= 1 ? 1 : Mathf.Min(maxColsByWidth, nHand);
+            int rows = nHand <= 0 ? 0 : Mathf.CeilToInt(nHand / (float)cols);
+            float cardH = cardW * CardAspectH / CardAspectW;
+            float gridContentH = zhengGridPadV * 2f + rows * cardH + Mathf.Max(0, rows - 1) * zhengRowSpacing;
+            float maxViewportH = Mathf.Max(240f, Mathf.Min(580f, RefHeight * 0.54f));
+            float scrollViewportH = rows <= 0 ? 120f : Mathf.Min(gridContentH, maxViewportH);
+            float minPanelH = zhengHeaderH + zhengSectionGap + 180f + zhengSectionGap + zhengFooterBlockH;
+            float idealPanelH = zhengHeaderH + zhengSectionGap + scrollViewportH + zhengSectionGap + zhengFooterBlockH;
+            float panelH = Mathf.Clamp(idealPanelH, minPanelH, Mathf.Max(minPanelH, RefHeight * 0.9f));
+
             var panel = new GameObject("Panel");
             panel.transform.SetParent(_sunQuanZhengPopupRoot.transform, false);
             var panelR = panel.AddComponent<RectTransform>();
             panelR.anchorMin = panelR.anchorMax = new Vector2(0.5f, 0.5f);
-            panelR.sizeDelta = new Vector2(1120f, 720f);
+            panelR.pivot = new Vector2(0.5f, 0.5f);
+            panelR.anchoredPosition = Vector2.zero;
+            panelR.sizeDelta = new Vector2(zhengPanelW, panelH);
             panel.AddComponent<Image>().color = new Color(0.18f, 0.2f, 0.26f, 0.98f);
 
             var header = new GameObject("Header");
@@ -2520,7 +2546,7 @@ namespace JunzhenDuijue
             headerR.anchorMax = new Vector2(1f, 1f);
             headerR.pivot = new Vector2(0.5f, 1f);
             headerR.anchoredPosition = new Vector2(0f, -10f);
-            headerR.sizeDelta = new Vector2(-40f, 118f);
+            headerR.sizeDelta = new Vector2(-40f, zhengHeaderH);
 
             var titleGo = new GameObject("Title");
             titleGo.transform.SetParent(header.transform, false);
@@ -2547,35 +2573,54 @@ namespace JunzhenDuijue
             if (subTmp != null)
             {
                 SetFullRect(subTmp.GetComponent<RectTransform>());
-                subTmp.enableWordWrapping = true;
+                subTmp.textWrappingMode = TextWrappingModes.Normal;
             }
 
-            var body = new GameObject("Body");
-            body.transform.SetParent(panel.transform, false);
-            var bodyR = body.AddComponent<RectTransform>();
-            bodyR.anchorMin = Vector2.zero;
-            bodyR.anchorMax = Vector2.one;
-            bodyR.offsetMin = new Vector2(24f, 84f);
-            bodyR.offsetMax = new Vector2(-24f, -128f);
-            body.AddComponent<Image>().color = new Color(0.12f, 0.14f, 0.18f, 1f);
+            var scrollGo = new GameObject("ZhengScroll");
+            scrollGo.transform.SetParent(panel.transform, false);
+            var scrollR = scrollGo.AddComponent<RectTransform>();
+            scrollR.anchorMin = Vector2.zero;
+            scrollR.anchorMax = Vector2.one;
+            float scrollTopFromBottom = zhengFooterBlockH + zhengSectionGap;
+            float scrollBottomFromTop = 10f + zhengHeaderH + zhengSectionGap;
+            scrollR.offsetMin = new Vector2(24f, scrollTopFromBottom);
+            scrollR.offsetMax = new Vector2(-24f, -scrollBottomFromTop);
+
+            var viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(scrollGo.transform, false);
+            var vpR = viewport.AddComponent<RectTransform>();
+            vpR.anchorMin = Vector2.zero;
+            vpR.anchorMax = Vector2.one;
+            vpR.offsetMin = Vector2.zero;
+            vpR.offsetMax = Vector2.zero;
+            viewport.AddComponent<Image>().color = new Color(0.12f, 0.14f, 0.18f, 1f);
+            viewport.AddComponent<Mask>().showMaskGraphic = false;
 
             var gridGo = new GameObject("CardGrid");
-            gridGo.transform.SetParent(body.transform, false);
-            SetFullRect(gridGo.AddComponent<RectTransform>());
+            gridGo.transform.SetParent(viewport.transform, false);
+            var contentR = gridGo.AddComponent<RectTransform>();
+            contentR.anchorMin = new Vector2(0f, 1f);
+            contentR.anchorMax = new Vector2(1f, 1f);
+            contentR.pivot = new Vector2(0.5f, 1f);
+            contentR.anchoredPosition = Vector2.zero;
+            contentR.sizeDelta = new Vector2(0f, Mathf.Max(gridContentH, 1f));
             var grid = gridGo.AddComponent<GridLayoutGroup>();
-            float cardW = 88f;
-            float cardH = cardW * CardAspectH / CardAspectW;
             grid.cellSize = new Vector2(cardW, cardH);
-            grid.spacing = new Vector2(14f, 14f);
-            grid.padding = new RectOffset(20, 20, 18, 18);
+            grid.spacing = new Vector2(zhengRowSpacing, zhengRowSpacing);
+            grid.padding = new RectOffset(zhengGridPadH, zhengGridPadH, zhengGridPadV, zhengGridPadV);
             grid.startCorner = GridLayoutGroup.Corner.UpperLeft;
             grid.startAxis = GridLayoutGroup.Axis.Horizontal;
-            grid.childAlignment = TextAnchor.MiddleCenter;
+            grid.childAlignment = TextAnchor.UpperCenter;
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            var hand = _state.Player.Hand;
-            int nHand = hand.Count;
-            int cols = nHand <= 1 ? 1 : Mathf.Min(12, nHand);
             grid.constraintCount = cols;
+
+            var zhengScroll = scrollGo.AddComponent<ScrollRect>();
+            zhengScroll.content = contentR;
+            zhengScroll.viewport = vpR;
+            zhengScroll.horizontal = false;
+            zhengScroll.vertical = true;
+            zhengScroll.movementType = ScrollRect.MovementType.Clamped;
+            zhengScroll.scrollSensitivity = 24f;
 
             for (int i = 0; i < hand.Count; i++)
             {
@@ -2593,6 +2638,10 @@ namespace JunzhenDuijue
                 var lt = CreateGameText(labelGo.transform, pc.DisplayName, 14);
                 SetFullRect(lt.GetComponent<RectTransform>());
             }
+
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(contentR);
+            zhengScroll.verticalNormalizedPosition = 1f;
 
             var footer = new GameObject("Footer");
             footer.transform.SetParent(panel.transform, false);
@@ -2715,7 +2764,7 @@ namespace JunzhenDuijue
             _battleIndicatorIntroTooltipText = CreateGameText(textGo.transform, string.Empty, 16, TextAlignmentOptions.TopLeft);
             if (_battleIndicatorIntroTooltipText != null)
             {
-                _battleIndicatorIntroTooltipText.enableWordWrapping = true;
+                _battleIndicatorIntroTooltipText.textWrappingMode = TextWrappingModes.Normal;
                 _battleIndicatorIntroTooltipText.alignment = TextAlignmentOptions.TopLeft;
             }
 
@@ -3464,7 +3513,7 @@ namespace JunzhenDuijue
             _skillInfoReadPopupBody = CreateGameText(bodyGo.transform, "", 20, TextAlignmentOptions.TopLeft);
             if (_skillInfoReadPopupBody != null)
             {
-                _skillInfoReadPopupBody.enableWordWrapping = true;
+                _skillInfoReadPopupBody.textWrappingMode = TextWrappingModes.Normal;
                 _skillInfoReadPopupBody.overflowMode = TextOverflowModes.Overflow;
                 _skillInfoReadPopupBody.color = new Color(0.92f, 0.93f, 0.95f, 1f);
                 var tr = _skillInfoReadPopupBody.GetComponent<RectTransform>();
@@ -3912,7 +3961,7 @@ namespace JunzhenDuijue
                 var descT = CreateGameText(descGo.transform, variantDescLines[i], 14, TextAlignmentOptions.TopLeft);
                 if (descT != null)
                 {
-                    descT.enableWordWrapping = true;
+                    descT.textWrappingMode = TextWrappingModes.Normal;
                     descT.color = new Color(0.82f, 0.86f, 0.9f, 1f);
                     var dr = descT.GetComponent<RectTransform>();
                     dr.anchorMin = new Vector2(0f, 1f);
@@ -4043,7 +4092,7 @@ namespace JunzhenDuijue
                 var descT = CreateGameText(descGo.transform, variantDescLines[i], 14, TextAlignmentOptions.TopLeft);
                 if (descT != null)
                 {
-                    descT.enableWordWrapping = true;
+                    descT.textWrappingMode = TextWrappingModes.Normal;
                     descT.color = new Color(0.82f, 0.86f, 0.9f, 1f);
                     var dr = descT.GetComponent<RectTransform>();
                     dr.anchorMin = new Vector2(0f, 1f);
@@ -4163,7 +4212,7 @@ namespace JunzhenDuijue
                 var descT = CreateGameText(descGo.transform, variantDescLines[i], 14, TextAlignmentOptions.TopLeft);
                 if (descT != null)
                 {
-                    descT.enableWordWrapping = true;
+                    descT.textWrappingMode = TextWrappingModes.Normal;
                     descT.color = new Color(0.82f, 0.86f, 0.9f, 1f);
                     var dr = descT.GetComponent<RectTransform>();
                     dr.anchorMin = new Vector2(0f, 1f);
@@ -4286,7 +4335,7 @@ namespace JunzhenDuijue
                 var descT = CreateGameText(descGo.transform, variantDescLines[i], 14, TextAlignmentOptions.TopLeft);
                 if (descT != null)
                 {
-                    descT.enableWordWrapping = true;
+                    descT.textWrappingMode = TextWrappingModes.Normal;
                     descT.color = new Color(0.82f, 0.86f, 0.9f, 1f);
                     var dr = descT.GetComponent<RectTransform>();
                     dr.anchorMin = new Vector2(0f, 1f);
@@ -4703,7 +4752,7 @@ namespace JunzhenDuijue
             _battleFlowLogModalContentRt = mcR;
 
             _battleFlowLogModalBody = CreateGameText(mContent.transform, "", 16, TextAlignmentOptions.TopLeft);
-            _battleFlowLogModalBody.enableWordWrapping = true;
+            _battleFlowLogModalBody.textWrappingMode = TextWrappingModes.Normal;
             _battleFlowLogModalBody.overflowMode = TextOverflowModes.Overflow;
             _battleFlowLogModalBody.raycastTarget = true;
 
@@ -4776,7 +4825,7 @@ namespace JunzhenDuijue
                 img.raycastTarget = false;
                 string line = e.Line ?? string.Empty;
                 var txt = CreateGameText(row.transform, line, 13, TextAlignmentOptions.Left);
-                txt.enableWordWrapping = true;
+                txt.textWrappingMode = TextWrappingModes.Normal;
                 txt.overflowMode = TextOverflowModes.Ellipsis;
                 txt.raycastTarget = false;
                 if (string.IsNullOrEmpty(line))
@@ -5018,7 +5067,7 @@ namespace JunzhenDuijue
             subR.anchoredPosition = new Vector2(0, -48);
             subR.sizeDelta = new Vector2(920, 28);
             _jushuiSubtitle = CreateGameText(subGo.transform, "", 20);
-            _jushuiSubtitle.enableWordWrapping = false;
+            _jushuiSubtitle.textWrappingMode = TextWrappingModes.NoWrap;
             _jushuiSubtitle.overflowMode = TextOverflowModes.Overflow;
             _jushuiSubtitle.alignment = TextAlignmentOptions.Center;
             SetFullRect(_jushuiSubtitle.GetComponent<RectTransform>());
@@ -5586,7 +5635,7 @@ namespace JunzhenDuijue
                 headerText.enableAutoSizing = true;
                 headerText.fontSizeMin = 12f;
                 headerText.fontSizeMax = 18f;
-                headerText.enableWordWrapping = false;
+                headerText.textWrappingMode = TextWrappingModes.NoWrap;
                 headerText.overflowMode = TextOverflowModes.Ellipsis;
                 headerText.raycastTarget = false;
             }
@@ -5736,7 +5785,7 @@ namespace JunzhenDuijue
                     labelT.enableAutoSizing = true;
                     labelT.fontSizeMin = 11f;
                     labelT.fontSizeMax = 15f;
-                    labelT.enableWordWrapping = true;
+                    labelT.textWrappingMode = TextWrappingModes.Normal;
                     labelT.overflowMode = TextOverflowModes.Ellipsis;
                 }
                 skillLabels.Add(labelT);
@@ -7135,7 +7184,7 @@ namespace JunzhenDuijue
                 int faceFontSize = pc.ChaShiCourtPlayedAsTen ? labelSize * 2 : labelSize;
                 var label = CreateGameText(labelGo.transform, PokerDeckFaceUiLines(pc), faceFontSize, TextAlignmentOptions.Center);
                 label.color = new Color(0.15f, 0.15f, 0.2f, 1f);
-                label.enableWordWrapping = false;
+                label.textWrappingMode = TextWrappingModes.NoWrap;
                 label.alignment = TextAlignmentOptions.Center;
                 if (pc.ChaShiCourtPlayedAsTen)
                 {
@@ -7226,7 +7275,7 @@ namespace JunzhenDuijue
                     roleRt.offsetMax = Vector2.zero;
                     var roleLbl = CreateGameText(roleGo.transform, roleForStrip, 14, TextAlignmentOptions.Center);
                     roleLbl.color = new Color(0.12f, 0.12f, 0.18f, 1f);
-                    roleLbl.enableWordWrapping = false;
+                    roleLbl.textWrappingMode = TextWrappingModes.NoWrap;
                     roleLbl.overflowMode = TextOverflowModes.Ellipsis;
                     roleLbl.enableAutoSizing = true;
                     roleLbl.fontSizeMin = 8f;
@@ -7243,7 +7292,7 @@ namespace JunzhenDuijue
                     rankRt.offsetMax = Vector2.zero;
                     var rankLbl = CreateGameText(rankGo.transform, pc.DisplayName, 16, TextAlignmentOptions.Center);
                     rankLbl.color = new Color(0.15f, 0.15f, 0.2f, 1f);
-                    rankLbl.enableWordWrapping = false;
+                    rankLbl.textWrappingMode = TextWrappingModes.NoWrap;
                     rankLbl.overflowMode = TextOverflowModes.Overflow;
                     SetFullRect(rankLbl.GetComponent<RectTransform>());
                 }
@@ -7255,7 +7304,7 @@ namespace JunzhenDuijue
                     int faceFont = pc.ChaShiCourtPlayedAsTen ? 30 : 18;
                     var lbl = CreateGameText(labelGo.transform, deckFace, faceFont, TextAlignmentOptions.Center);
                     lbl.color = new Color(0.15f, 0.15f, 0.2f, 1f);
-                    lbl.enableWordWrapping = false;
+                    lbl.textWrappingMode = TextWrappingModes.NoWrap;
                     lbl.alignment = TextAlignmentOptions.Center;
                     lbl.overflowMode = TextOverflowModes.Overflow;
                     if (pc.ChaShiCourtPlayedAsTen)
@@ -7297,37 +7346,92 @@ namespace JunzhenDuijue
                 _state.Player.Hand.Add(card);
             }
 
-            TrySunCeZhuandouAutoTakeBackLastAfterUndoFromSevenToSix(countBefore);
+            TrySunCeZhuandouCascadeTakeBackAfterUndo(card, playedIndex, countBefore);
             RefreshAllFromState();
         }
 
         /// <summary>
-        /// 【转斗千里】第 6 张起须整叠合法；从 7 张撤销任意一张后若剩 6 张，可能破坏「逐步追加」路径（例如撤掉中间牌）。
-        /// 此时再从<strong>打出序末尾</strong>自动收回一张，使打出区回到至多 5 张，避免利用非法 6 张过渡态继续打牌。
+        /// 【转斗千里】当打出区已超过 5 张时，撤回中间牌会破坏「按顺序逐张追加且始终合法」的构筑路径。
+        /// 约束策略：只按点数检测，不看花色；撤回某点数后，将打出区中点数更高的牌同步收回。
+        /// 例如 A..K 撤 Q => 同步撤 K；A..Q 撤 10 => 同步撤 J、Q。
         /// </summary>
-        private static void TrySunCeZhuandouAutoTakeBackLastAfterUndoFromSevenToSix(int playedCountBeforeUndo)
+        private static void TrySunCeZhuandouCascadeTakeBackAfterUndo(PokerCard removedCard, int removedIndexBeforeUndo, int playedCountBeforeUndo)
         {
             if (_state == null || _isOnlineMode)
                 return;
             if (!OfflineSkillEngine.SideHasFaceUpSunCeZhuandou(_state, true))
                 return;
-            if (playedCountBeforeUndo != 7 || _state.Player.PlayedThisPhase.Count != 6)
+            // <=5 时允许自由子集宣言，不需要链式回收。
+            if (playedCountBeforeUndo <= BattleState.MaxPlayPerPhase)
+                return;
+            if (removedIndexBeforeUndo < 0)
                 return;
 
-            int last = _state.Player.PlayedThisPhase.Count - 1;
-            if (last < 0)
+            var played = _state.Player.PlayedThisPhase;
+            if (played == null || played.Count <= 0)
                 return;
-            var tail = _state.Player.PlayedThisPhase[last];
-            _state.Player.PlayedThisPhase.RemoveAt(last);
-            if (!tail.PlayedAsGeneral)
+
+            int removedEffectiveRank = GetSunCeEffectiveRankForRemovedCard(played, removedCard, removedIndexBeforeUndo);
+            int takeBackCount = 0;
+            for (int i = played.Count - 1; i >= 0; i--)
             {
-                tail.ChaShiCourtPlayedAsTen = false;
-                _state.Player.Hand.Add(tail);
+                var tail = played[i];
+                int tailEffectiveRank = GetSunCeEffectiveRankAt(played, i);
+                if (tailEffectiveRank <= removedEffectiveRank)
+                    continue;
+
+                played.RemoveAt(i);
+                takeBackCount++;
+                if (!tail.PlayedAsGeneral)
+                {
+                    tail.ChaShiCourtPlayedAsTen = false;
+                    _state.Player.Hand.Add(tail);
+                }
             }
 
+            if (takeBackCount <= 0)
+                return;
+
             ToastUI.Show(
-                "\u3010\u8f6c\u6597\u5343\u91cc\u3011\u5df2\u4ece\u6253\u51fa\u533a\u518d\u6536\u56de\u672b\u5f20\uff08\u907f\u514d\u975e\u6cd5\u516d\u5f20\u8fc7\u6e21\u6001\uff09",
+                "\u3010\u8f6c\u6597\u5343\u91cc\u3011\u5df2\u540c\u6b65\u6536\u56de\u540e\u7eed" + takeBackCount + "\u5f20\u724c\uff0c\u4ee5\u4fdd\u6301\u5408\u6cd5\u8fde\u7eed\u6784\u724c",
                 2.4f);
+        }
+
+        private static int GetSunCeEffectiveRankForRemovedCard(List<PokerCard> playedAfterRemoval, PokerCard removedCard, int removedIndexBeforeUndo)
+        {
+            if (removedCard.Rank != 1)
+                return removedCard.Rank;
+
+            int insertIndex = Mathf.Clamp(removedIndexBeforeUndo, 0, playedAfterRemoval.Count);
+            var snapshot = new List<PokerCard>(playedAfterRemoval.Count + 1);
+            snapshot.AddRange(playedAfterRemoval);
+            snapshot.Insert(insertIndex, removedCard);
+            return GetSunCeEffectiveAceRank(snapshot, insertIndex);
+        }
+
+        private static int GetSunCeEffectiveRankAt(List<PokerCard> cards, int index)
+        {
+            if (cards == null || index < 0 || index >= cards.Count)
+                return 0;
+
+            PokerCard card = cards[index];
+            if (card.Rank != 1)
+                return card.Rank;
+
+            return GetSunCeEffectiveAceRank(cards, index);
+        }
+
+        /// <summary>
+        /// A 点数判定（仅用于【转斗千里】回收比较）：
+        /// - 有 J/Q/K 且无 2/3/4：A=14
+        /// - 其余：A=1
+        /// </summary>
+        private static int GetSunCeEffectiveAceRank(List<PokerCard> cards, int aceIndex)
+        {
+            if (cards == null || aceIndex < 0 || aceIndex >= cards.Count || cards[aceIndex].Rank != 1)
+                return 1;
+
+            return FreeStraightRules.GetEffectiveAceRank(cards, aceIndex, FreeStraightRules.JqkWithout234HighElseLow);
         }
 
         private static bool SunCeAllowsAppendForActivePlayer(PokerCard cardToAdd)
