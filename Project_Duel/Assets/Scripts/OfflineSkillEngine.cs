@@ -986,7 +986,7 @@ namespace JunzhenDuijue
             return false;
         }
 
-        /// <summary>【横征暴敛】：防御技节点内先回复生命，再由防御方从弃牌堆至多回收 1 张（人类弹窗；AI 自动取顶）；仍登记基础防御减伤。</summary>
+        /// <summary>【横征暴敛】：防御技节点内先回复生命，再由防御方从弃牌堆至多回收 1 张（人类弹窗；AI 自动取顶）；不登记通用防御减伤。</summary>
         private static bool ApplyDefenseDongZhuoHengZheng(
             BattleState state,
             bool defenderIsPlayer,
@@ -1000,17 +1000,18 @@ namespace JunzhenDuijue
             var defSide = state.GetSide(defenderIsPlayer);
             int heal = rule != null ? Mathf.Max(1, rule.Value1) : 1;
             defSide.CurrentHp = Mathf.Min(defSide.MaxHp, defSide.CurrentHp + heal);
-            state.PendingDefenseReduction = Mathf.Max(state.PendingDefenseReduction, 1);
+            state.PendingDefenseOmitDefaultFlatMitigation = true;
 
             if (GameUI.IsOnlineBattle())
             {
-                PokerCard reclaimed = null;
+                PokerCard? reclaimed = null;
                 if (defSide.DiscardPile.Count > 0)
                 {
                     int li = defSide.DiscardPile.Count - 1;
-                    reclaimed = defSide.DiscardPile[li];
+                    PokerCard c = defSide.DiscardPile[li];
+                    reclaimed = c;
                     defSide.DiscardPile.RemoveAt(li);
-                    defSide.Hand.Add(reclaimed);
+                    defSide.Hand.Add(c);
                 }
 
                 GameUI.ShowHengZhengBaoLianResultBanner(defenderIsPlayer, cardId, heal, reclaimed, generalIndex, skillIndex, endWithDefenseDeclare: false);
@@ -1019,13 +1020,14 @@ namespace JunzhenDuijue
 
             if (!defenderIsPlayer)
             {
-                PokerCard reclaimed = null;
+                PokerCard? reclaimed = null;
                 if (defSide.DiscardPile.Count > 0)
                 {
                     int li = defSide.DiscardPile.Count - 1;
-                    reclaimed = defSide.DiscardPile[li];
+                    PokerCard c = defSide.DiscardPile[li];
+                    reclaimed = c;
                     defSide.DiscardPile.RemoveAt(li);
-                    defSide.Hand.Add(reclaimed);
+                    defSide.Hand.Add(c);
                 }
 
                 GameUI.ShowHengZhengBaoLianResultBanner(defenderIsPlayer, cardId, heal, reclaimed, generalIndex, skillIndex, endWithDefenseDeclare: false);
@@ -1628,12 +1630,24 @@ namespace JunzhenDuijue
         }
 
         /// <summary>
-        /// 收入阶段结束节点上，所有翻面【暴政】的触发归属方，<strong>同节点内按先后手顺序</strong>（<see cref="BattleState.PlayerGoesFirst"/> 方在先，另一方在后）；
-        /// 每名董卓各结算一轮「双方各弃 1 张」，与【据守】等同节点双方技能先手先行的处理方式一致。
+        /// 收入阶段结束节点上，每名翻面且卡表含【暴政】的武将各一条触发记录（<see cref="OwnerSideIsPlayer"/> + 该侧 <see cref="GeneralIndex"/>），
+        /// <strong>同节点内按先后手</strong>（<see cref="BattleState.PlayerGoesFirst"/> 方在先，另一方在后）；每名董卓各结算一轮「双方各弃 1 张」。
         /// </summary>
-        public static List<bool> GetIncomeEndBaozhengOwnerSidesInTriggerOrder(BattleState state)
+        public readonly struct IncomeEndBaozhengTrigger
         {
-            var result = new List<bool>();
+            public readonly bool OwnerSideIsPlayer;
+            public readonly int GeneralIndex;
+
+            public IncomeEndBaozhengTrigger(bool ownerSideIsPlayer, int generalIndex)
+            {
+                OwnerSideIsPlayer = ownerSideIsPlayer;
+                GeneralIndex = generalIndex;
+            }
+        }
+
+        public static List<IncomeEndBaozhengTrigger> GetIncomeEndBaozhengTriggersInTriggerOrder(BattleState state)
+        {
+            var result = new List<IncomeEndBaozhengTrigger>();
             if (state == null)
                 return result;
 
@@ -1645,12 +1659,18 @@ namespace JunzhenDuijue
                     if (!side.IsGeneralFaceUp(gi))
                         continue;
 
-                    string cid = side.GeneralCardIds[gi] ?? string.Empty;
+                    string cid = (side.GeneralCardIds[gi] ?? string.Empty).Trim();
+                    if (string.IsNullOrEmpty(cid))
+                        continue;
+
                     for (int sk = 0; sk < 3; sk++)
                     {
                         SkillRuleEntry rule = SkillRuleLoader.GetRule(cid, sk);
                         if (rule != null && string.Equals(rule.EffectId, IncomeEndAllPlayersDiscardOneEffectId, StringComparison.Ordinal))
-                            result.Add(sideIsPlayer);
+                        {
+                            result.Add(new IncomeEndBaozhengTrigger(sideIsPlayer, gi));
+                            break;
+                        }
                     }
                 }
             }
@@ -1663,16 +1683,24 @@ namespace JunzhenDuijue
 
         /// <summary>场上是否存在翻面【暴政】。</summary>
         public static bool ShouldApplyIncomeEndBaozheng(BattleState state) =>
-            state != null && GetIncomeEndBaozhengOwnerSidesInTriggerOrder(state).Count > 0;
+            state != null && GetIncomeEndBaozhengTriggersInTriggerOrder(state).Count > 0;
+
+        /// <summary>【飞扬跋扈】打出区是否满足牌型：单张黑桃且有效点数为 10（含真 10 与【察势】作 10 的黑桃 J/Q/K），且非武将牌当打出。</summary>
+        public static bool DongZhuoFeiYangPlayedMatches(IReadOnlyList<PokerCard> cards)
+        {
+            if (cards == null || cards.Count != 1 || cards[0].PlayedAsGeneral)
+                return false;
+
+            PokerCard c = cards[0];
+            if (!string.Equals(c.Suit ?? string.Empty, Spades, StringComparison.Ordinal))
+                return false;
+            return PokerPatternRules.GetRankForAttackThreshold(c) == 10;
+        }
 
         /// <summary>【飞扬跋扈】：打出区须为单张黑桃10；2点通用伤害，命中后由攻击方从受害方手牌中选至多 2 张弃置（离线人类攻击方）；否则由程序代选。</summary>
         public static bool TryConfigureDongZhuoFeiYang(BattleState state, List<PokerCard> cards)
         {
-            if (state == null || cards == null || cards.Count != 1 || cards[0].PlayedAsGeneral)
-                return false;
-
-            PokerCard c = cards[0];
-            if (!string.Equals(c.Suit ?? string.Empty, Spades, StringComparison.Ordinal) || c.Rank != 10)
+            if (state == null || !DongZhuoFeiYangPlayedMatches(cards))
                 return false;
 
             state.PendingBaseDamage = 2;

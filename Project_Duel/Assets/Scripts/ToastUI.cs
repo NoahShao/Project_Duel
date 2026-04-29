@@ -51,7 +51,7 @@ namespace JunzhenDuijue
                 _root.SetActive(false);
         }
 
-        public static void Show(string message, float duration = 2f, bool pauseGameWhileVisible = false, Action onComplete = null)
+        public static void Show(string message, float duration = 1.5f, bool pauseGameWhileVisible = false, Action onComplete = null)
         {
             if (_root == null)
                 Create();
@@ -104,10 +104,8 @@ namespace JunzhenDuijue
                 _gamePausedForToast = true;
             }
 
-            if (pauseGameWhileVisible)
-                yield return new WaitForSecondsRealtime(seconds);
-            else
-                yield return new WaitForSeconds(seconds);
+            // 始终按真实时间计时；若用 WaitForSeconds，在 Time.timeScale==0（如董卓弹窗）时协程永不推进，Toast 不会消失。
+            yield return new WaitForSecondsRealtime(seconds);
 
             if (pauseGameWhileVisible && _gamePausedForToast)
             {

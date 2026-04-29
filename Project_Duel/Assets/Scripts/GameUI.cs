@@ -91,6 +91,8 @@ namespace JunzhenDuijue
 
         private static DiscardPopupPurpose _discardPopupPurpose;
         private static System.Action _incomeTyrannyOnConfirmedStep;
+        private static bool _incomeTyrannyBaozhengBannerAfterPlayerConfirm;
+        private static bool _incomeTyrannyBaozhengDongZhuoOnPlayerSide;
 
         private static GameObject _dongZhuoOverlayModalRoot;
         private static float _dongZhuoOverlayModalPrevTimeScale;
@@ -2054,17 +2056,41 @@ namespace JunzhenDuijue
                 return;
             }
 
-            System.Collections.Generic.List<bool> owners = OfflineSkillEngine.GetIncomeEndBaozhengOwnerSidesInTriggerOrder(_state);
+            System.Collections.Generic.List<OfflineSkillEngine.IncomeEndBaozhengTrigger> triggers =
+                OfflineSkillEngine.GetIncomeEndBaozhengTriggersInTriggerOrder(_state);
             BattleFlowLog.Add(
                 BattlePhaseManager.FormatFlowTurnBracketForBattleLog(_state.IsPlayerTurn)
                 + "\u3010\u66b4\u653f\u3011\uff08\u672c\u56de\u5408\u6536\u5165\u9636\u6bb5\u7ed3\u675f\uff09\uff1a\u573a\u4e0a"
-                + owners.Count
+                + triggers.Count
                 + "\u540d\u8463\u5353\u3010\u66b4\u653f\u3011\u6309\u5148\u540e\u624b\u987a\u5e8f\u7ed3\u7b97\uff0c\u6bcf\u6b21\u5747\u4e3a\u53cc\u65b9\u5404\u5f031\u5f20\u3002");
 
             bool activeIsPlayer = _state.IsPlayerTurn;
-            int batch = 0;
 
-            void RunNextOwnerBatch()
+            string BuildBaozhengTitleForTrigger(int triggerIndex)
+            {
+                OfflineSkillEngine.IncomeEndBaozhengTrigger t = triggers[triggerIndex];
+                bool side = t.OwnerSideIsPlayer;
+                string camp = CampLabelUi(side);
+                int sameSideTriggers = 0;
+                for (int i = 0; i < triggers.Count; i++)
+                {
+                    if (triggers[i].OwnerSideIsPlayer == side)
+                        sameSideTriggers++;
+                }
+
+                if (sameSideTriggers <= 1)
+                    return "\u3010" + camp + "\u3011\u8463\u5353\u89e6\u53d1\u6280\u80fd\u3010\u66b4\u653f\u3011";
+                int ordinal = 1;
+                for (int i = 0; i < triggerIndex; i++)
+                {
+                    if (triggers[i].OwnerSideIsPlayer == side)
+                        ordinal++;
+                }
+
+                return "\u3010" + camp + "\u3011\u8463\u5353\uff08\u7b2c" + ordinal + "\u540d\uff09\u89e6\u53d1\u6280\u80fd\u3010\u66b4\u653f\u3011";
+            }
+
+            void RunBaozhengBatch(int batchIdx)
             {
                 if (_state == null || _battleMatchEnded)
                 {
@@ -2072,29 +2098,39 @@ namespace JunzhenDuijue
                     return;
                 }
 
-                if (batch >= owners.Count)
+                if (batchIdx >= triggers.Count)
                 {
                     onComplete?.Invoke();
                     return;
                 }
 
-                bool dongZhuoOnPlayerSide = owners[batch++];
-                string mainTitle = "\u3010" + CampLabelUi(dongZhuoOnPlayerSide) + "\u3011\u8463\u5353\u89e6\u53d1\u6280\u80fd\u3010\u66b4\u653f\u3011";
+                bool dongZhuoOnPlayerSide = triggers[batchIdx].OwnerSideIsPlayer;
+                string mainTitle = BuildBaozhengTitleForTrigger(batchIdx);
                 string subTitle = "\u8bf7\u5f03\u7f6e\u4e00\u5f20\u724c";
+                bool dz = dongZhuoOnPlayerSide;
+                int nextIdx = batchIdx + 1;
                 DiscardOneHandForIncomeTyranny(
                     activeIsPlayer,
-                    () => DiscardOneHandForIncomeTyranny(!activeIsPlayer, RunNextOwnerBatch, mainTitle, subTitle),
+                    () => DiscardOneHandForIncomeTyranny(!activeIsPlayer, () => RunBaozhengBatch(nextIdx), mainTitle, subTitle, true, dz),
                     mainTitle,
-                    subTitle);
+                    subTitle,
+                    true,
+                    dz);
             }
 
-            RunNextOwnerBatch();
+            RunBaozhengBatch(0);
         }
 
         private static string CampLabelUi(bool sideIsPlayer) =>
             sideIsPlayer ? "\u5df1\u65b9" : "\u654c\u65b9";
 
-        private static void DiscardOneHandForIncomeTyranny(bool sideIsPlayer, System.Action next, string popupTitle = null, string popupSubtitle = null)
+        private static void DiscardOneHandForIncomeTyranny(
+            bool sideIsPlayer,
+            System.Action next,
+            string popupTitle = null,
+            string popupSubtitle = null,
+            bool incomeBaozheng = false,
+            bool baozhengDongZhuoOnPlayerSide = false)
         {
             if (_state == null || _battleMatchEnded)
             {
@@ -2113,6 +2149,8 @@ namespace JunzhenDuijue
             {
                 _discardPopupPurpose = DiscardPopupPurpose.IncomeTyrannyBaozheng;
                 _incomeTyrannyOnConfirmedStep = next;
+                _incomeTyrannyBaozhengBannerAfterPlayerConfirm = incomeBaozheng;
+                _incomeTyrannyBaozhengDongZhuoOnPlayerSide = baozhengDongZhuoOnPlayerSide;
                 string title = !string.IsNullOrEmpty(popupTitle)
                     ? popupTitle
                     : "\u3010\u66b4\u653f\u3011\u8bf7\u5f03\u7f6e 1 \u5f20\u624b\u724c";
@@ -2127,9 +2165,24 @@ namespace JunzhenDuijue
             }
 
             int idx = UnityEngine.Random.Range(0, side.Hand.Count);
-            BattleState.DiscardFromHand(_state, false, new List<int> { idx });
+            PokerCard removed = side.Hand[idx];
+            string removedName = removed.DisplayName ?? string.Empty;
+            BattleState.DiscardFromHand(_state, sideIsPlayer, new List<int> { idx });
             RefreshAllFromState();
-            next?.Invoke();
+            if (incomeBaozheng)
+            {
+                string campDisc = CampLabelUi(sideIsPlayer);
+                string campSrc = CampLabelUi(baozhengDongZhuoOnPlayerSide);
+                string line = "\u3010"
+                    + campDisc
+                    + "\u73a9\u5bb6\u3011\u56e0\u3010"
+                    + campSrc
+                    + "\u3011\u8463\u5353\u6280\u80fd\u3010\u66b4\u653f\u3011\u5f03\u7f6e\u4e00\u5f20\u724c\uff1a"
+                    + removedName;
+                SkillEffectBanner.ShowRawLine(line, () => next?.Invoke());
+            }
+            else
+                next?.Invoke();
         }
 
         private static void OpenJuShouOfferPopup(SkillRuleEntry rule, System.Action onClosed)
@@ -4478,6 +4531,112 @@ namespace JunzhenDuijue
             _attackPatternPopupRoot.SetActive(true);
         }
 
+        /// <summary>【飞扬跋扈】二级确认：牌型为单张黑桃10；不符时按钮置灰不可点（与 <see cref="OfflineSkillEngine.TryConfigureDongZhuoFeiYang"/> 一致）。</summary>
+        private static void OpenDongZhuoFeiYangAttackPatternPopup(int generalIndex, int skillIndex, string skillName)
+        {
+            if (_attackPatternPopupRoot == null || _state == null || _attackPatternContent == null)
+                return;
+
+            var cards = _state.ActiveSide.PlayedThisPhase;
+            bool enabled = OfflineSkillEngine.DongZhuoFeiYangPlayedMatches(cards);
+
+            foreach (Transform child in _attackPatternContent)
+                UnityEngine.Object.Destroy(child.gameObject);
+
+            if (_attackPatternTitle != null)
+                _attackPatternTitle.text = "\u9009\u62e9\u3010\u98de\u626c\u9738\u6237\u3011\u724c\u578b";
+
+            string btnLabel = "\u9ed1\u684310\uff08\u5355\u5f20\uff09";
+            string descBody = GetPlayerGeneralSkillRuleText(generalIndex, skillIndex);
+            if (string.IsNullOrWhiteSpace(descBody))
+                descBody = "\u6253\u51fa\u533a\u987b\u4e3a\u5355\u5f20\u9ed1\u684310\uff1a\u9020\u62102\u70b9\u901a\u7528\u4f24\u5bb3\uff1b\u547d\u4e2d\u540e\u7531\u653b\u51fb\u65b9\u4ece\u53d7\u5bb3\u65b9\u624b\u724c\u4e2d\u9009\u5f03\u81f3\u591a2\u5f20\u3002";
+            else
+                descBody = descBody.Trim();
+
+            var row = new GameObject("DongZhuoFeiYangRow");
+            row.transform.SetParent(_attackPatternContent, false);
+            var rowV = row.AddComponent<VerticalLayoutGroup>();
+            rowV.spacing = 8f;
+            rowV.childAlignment = TextAnchor.UpperCenter;
+            rowV.childControlWidth = true;
+            rowV.childControlHeight = true;
+            rowV.childForceExpandWidth = true;
+            rowV.childForceExpandHeight = false;
+            rowV.padding = new RectOffset(0, 0, 0, 0);
+
+            var rowLe = row.AddComponent<LayoutElement>();
+            rowLe.minHeight = 120f;
+            rowLe.preferredHeight = 128f;
+            rowLe.flexibleHeight = 0f;
+
+            var buttonGo = new GameObject("DongZhuoFeiYangBtn");
+            buttonGo.transform.SetParent(row.transform, false);
+            var btnLe = buttonGo.AddComponent<LayoutElement>();
+            btnLe.preferredHeight = 50f;
+            btnLe.minHeight = 50f;
+            btnLe.flexibleHeight = 0f;
+            var img = buttonGo.AddComponent<Image>();
+            img.sprite = GetWhiteSprite();
+            img.color = enabled ? new Color(0.22f, 0.48f, 0.82f, 1f) : new Color(0.32f, 0.32f, 0.36f, 0.85f);
+            var btn = buttonGo.AddComponent<Button>();
+            btn.targetGraphic = img;
+            btn.interactable = enabled;
+            btn.onClick.AddListener(() =>
+            {
+                if (_state == null || !enabled)
+                    return;
+                CloseAttackPatternPopup();
+                if (_isOnlineMode)
+                    _ = OnlineClientService.SelectAttackSkillAsync(generalIndex, skillIndex);
+                else
+                    BattlePhaseManager.NotifyAttackSkillSelected(true, generalIndex, skillIndex, skillName);
+            });
+
+            var btnText = CreateGameText(buttonGo.transform, btnLabel, 20);
+            if (btnText != null)
+                SetFullRect(btnText.GetComponent<RectTransform>());
+
+            var descGo = new GameObject("DongZhuoFeiYangDesc");
+            descGo.transform.SetParent(row.transform, false);
+            var descLe = descGo.AddComponent<LayoutElement>();
+            descLe.minHeight = 36f;
+            descLe.preferredHeight = -1f;
+            descLe.flexibleHeight = 0f;
+            var descT = CreateGameText(descGo.transform, descBody, 14, TextAlignmentOptions.TopLeft);
+            if (descT != null)
+            {
+                descT.textWrappingMode = TextWrappingModes.Normal;
+                descT.color = new Color(0.82f, 0.86f, 0.9f, 1f);
+                var dr = descT.GetComponent<RectTransform>();
+                dr.anchorMin = new Vector2(0f, 1f);
+                dr.anchorMax = new Vector2(1f, 1f);
+                dr.pivot = new Vector2(0.5f, 1f);
+                dr.sizeDelta = new Vector2(0f, 96f);
+            }
+
+            var backGo = new GameObject("Back");
+            backGo.transform.SetParent(_attackPatternContent, false);
+            var backLe = backGo.AddComponent<LayoutElement>();
+            backLe.preferredHeight = 48f;
+            backLe.minHeight = 48f;
+            var backImg = backGo.AddComponent<Image>();
+            backImg.sprite = GetWhiteSprite();
+            backImg.color = new Color(0.4f, 0.4f, 0.44f, 1f);
+            var backBtn = backGo.AddComponent<Button>();
+            backBtn.targetGraphic = backImg;
+            backBtn.onClick.AddListener(() =>
+            {
+                CloseAttackPatternPopup();
+                OpenPlayerAttackSkillFirstMenu();
+            });
+            var backTxt = CreateGameText(backGo.transform, "\u8fd4\u56de\u4e0a\u4e00\u7ea7", 20);
+            if (backTxt != null)
+                SetFullRect(backTxt.GetComponent<RectTransform>());
+
+            CollapsePlayerHandIfExpanded();
+            _attackPatternPopupRoot.SetActive(true);
+        }
+
         private static void CommitAttackSkillAfterOptionalPatternPopup(int generalIndex, int skillIndex, string skillName)
         {
             if (_state == null)
@@ -4552,6 +4711,20 @@ namespace JunzhenDuijue
                     return;
                 }
 
+                if (string.Equals(oSkillKey, "NO010_1", System.StringComparison.Ordinal))
+                {
+                    var dzPlayed = _state.ActiveSide.PlayedThisPhase;
+                    if (dzPlayed != null && OfflineSkillEngine.DongZhuoFeiYangPlayedMatches(dzPlayed))
+                    {
+                        _ = OnlineClientService.SelectAttackSkillAsync(generalIndex, skillIndex);
+                        return;
+                    }
+
+                    CloseChoicePopup();
+                    OpenDongZhuoFeiYangAttackPatternPopup(generalIndex, skillIndex, skillName);
+                    return;
+                }
+
                 _ = OnlineClientService.SelectAttackSkillAsync(generalIndex, skillIndex);
                 return;
             }
@@ -4607,6 +4780,13 @@ namespace JunzhenDuijue
             {
                 CloseChoicePopup();
                 OpenYuanShuAttackPatternPopup(generalIndex, skillIndex, skillName);
+                return;
+            }
+
+            if (string.Equals(skillKey, "NO010_1", System.StringComparison.Ordinal))
+            {
+                CloseChoicePopup();
+                OpenDongZhuoFeiYangAttackPatternPopup(generalIndex, skillIndex, skillName);
                 return;
             }
 
@@ -5119,14 +5299,41 @@ namespace JunzhenDuijue
                 _playerHandRightMouseScroll.ClampToBounds(true);
         }
 
+        private static void SetDiscardPhasePopupCardUnselectedVisual(int handIndex)
+        {
+            if (_discardPhaseContent == null || handIndex < 0 || handIndex >= _discardPhaseContent.childCount)
+                return;
+            var tr = _discardPhaseContent.GetChild(handIndex);
+            if (tr == null)
+                return;
+            var oldImg = tr.GetComponent<Image>();
+            if (oldImg != null)
+                oldImg.color = new Color(0.22f, 0.26f, 0.32f, 1f);
+        }
+
         private static void ToggleDiscardPhaseSelection(int index, Image img)
         {
             if (_discardPhaseSelectedIndices.Contains(index))
             {
                 _discardPhaseSelectedIndices.Remove(index);
                 img.color = new Color(0.22f, 0.26f, 0.32f, 1f);
+                return;
             }
-            else if (_discardPhaseSelectedIndices.Count < _discardPhaseNeedCount)
+
+            if (_discardPhaseNeedCount == 1 && _discardPhaseSelectedIndices.Count >= 1)
+            {
+                foreach (int oldIdx in _discardPhaseSelectedIndices.ToList())
+                {
+                    _discardPhaseSelectedIndices.Remove(oldIdx);
+                    SetDiscardPhasePopupCardUnselectedVisual(oldIdx);
+                }
+
+                _discardPhaseSelectedIndices.Add(index);
+                img.color = new Color(0.4f, 0.6f, 0.9f, 1f);
+                return;
+            }
+
+            if (_discardPhaseSelectedIndices.Count < _discardPhaseNeedCount)
             {
                 _discardPhaseSelectedIndices.Add(index);
                 img.color = new Color(0.4f, 0.6f, 0.9f, 1f);
@@ -5144,14 +5351,44 @@ namespace JunzhenDuijue
             if (_discardPopupPurpose == DiscardPopupPurpose.IncomeTyrannyBaozheng)
             {
                 _discardPhasePopupRoot.SetActive(false);
+                bool showBzBanner = _incomeTyrannyBaozhengBannerAfterPlayerConfirm;
+                bool dzOnPlayer = _incomeTyrannyBaozhengDongZhuoOnPlayerSide;
+                _incomeTyrannyBaozhengBannerAfterPlayerConfirm = false;
+                var discardedNames = new List<string>();
                 if (_state != null)
+                {
+                    SideState side = _state.GetSide(_discardPhaseIsPlayer);
+                    var ordered = new List<int>(_discardPhaseSelectedIndices);
+                    ordered.Sort();
+                    foreach (int ix in ordered)
+                    {
+                        if (ix >= 0 && ix < side.Hand.Count)
+                            discardedNames.Add(side.Hand[ix].DisplayName ?? string.Empty);
+                    }
+
                     BattleState.DiscardFromHand(_state, _discardPhaseIsPlayer, new List<int>(_discardPhaseSelectedIndices));
+                }
+
                 _discardPhaseSelectedIndices.Clear();
                 _discardPopupPurpose = DiscardPopupPurpose.NormalDiscardPhase;
                 RefreshAllFromState();
                 System.Action cont = _incomeTyrannyOnConfirmedStep;
                 _incomeTyrannyOnConfirmedStep = null;
-                cont?.Invoke();
+                if (showBzBanner)
+                {
+                    string campDisc = CampLabelUi(_discardPhaseIsPlayer);
+                    string campSrc = CampLabelUi(dzOnPlayer);
+                    string cardPart = discardedNames.Count > 0 ? discardedNames[0] : string.Empty;
+                    string line = "\u3010"
+                        + campDisc
+                        + "\u73a9\u5bb6\u3011\u56e0\u3010"
+                        + campSrc
+                        + "\u3011\u8463\u5353\u6280\u80fd\u3010\u66b4\u653f\u3011\u5f03\u7f6e\u4e00\u5f20\u724c\uff1a"
+                        + cardPart;
+                    SkillEffectBanner.ShowRawLine(line, () => cont?.Invoke());
+                }
+                else
+                    cont?.Invoke();
                 return;
             }
 
@@ -7609,16 +7846,17 @@ namespace JunzhenDuijue
                         return;
                     }
 
-                    var card = _state.Player.Hand[handIndex];
-                    if (!SunCeAllowsAppendForActivePlayer(card))
+                    PokerCard fromHand = _state.Player.Hand[handIndex];
+                    PokerCard candidate = fromHand;
+                    candidate.ChaShiCourtPlayedAsTen = useAsTen;
+                    if (!SunCeAllowsAppendForActivePlayer(candidate))
                     {
                         ToastUI.Show("\u51fa\u724c\u4e0d\u7b26\u5408\u81ea\u7531\u987a\u5b50/\u81ea\u7531\u540c\u82b1\u987a\u89c4\u5219\uff0c\u4e0d\u80fd\u51fa\u724c", 2.2f, pauseGameWhileVisible: false);
                         return;
                     }
 
                     _state.Player.Hand.RemoveAt(handIndex);
-                    card.ChaShiCourtPlayedAsTen = useAsTen;
-                    _state.Player.PlayedThisPhase.Add(card);
+                    _state.Player.PlayedThisPhase.Add(candidate);
                     RefreshAllFromState();
                 }, onCancel: RefreshAllFromState);
                 return;
@@ -8483,22 +8721,30 @@ namespace JunzhenDuijue
             if (titleTmp != null)
             {
                 var tr = titleTmp.GetComponent<RectTransform>();
-                tr.anchorMin = new Vector2(0.05f, 0.82f);
-                tr.anchorMax = new Vector2(0.95f, 0.96f);
+                tr.anchorMin = new Vector2(0.05f, 0.88f);
+                tr.anchorMax = new Vector2(0.95f, 0.98f);
                 tr.offsetMin = tr.offsetMax = Vector2.zero;
             }
 
-            CreateGameText(
+            var subTmp = CreateGameText(
                 panel.transform,
                 "\u8bf7\u9009\u62e9\u81f3\u591a\u4e24\u5f20\u724c",
                 17,
                 TextAlignmentOptions.Center);
+            if (subTmp != null)
+            {
+                subTmp.textWrappingMode = TextWrappingModes.Normal;
+                var subRt = subTmp.GetComponent<RectTransform>();
+                subRt.anchorMin = new Vector2(0.05f, 0.76f);
+                subRt.anchorMax = new Vector2(0.95f, 0.87f);
+                subRt.offsetMin = subRt.offsetMax = Vector2.zero;
+            }
 
             var scrollGo = new GameObject("Scroll");
             scrollGo.transform.SetParent(panel.transform, false);
             var scrollR = scrollGo.AddComponent<RectTransform>();
-            scrollR.anchorMin = new Vector2(0.04f, 0.18f);
-            scrollR.anchorMax = new Vector2(0.96f, 0.78f);
+            scrollR.anchorMin = new Vector2(0.04f, 0.14f);
+            scrollR.anchorMax = new Vector2(0.96f, 0.73f);
             scrollR.offsetMin = scrollR.offsetMax = Vector2.zero;
             var viewport = new GameObject("Viewport");
             viewport.transform.SetParent(scrollGo.transform, false);
@@ -8560,7 +8806,7 @@ namespace JunzhenDuijue
                     {
                         if (selected.Count >= maxDiscard)
                         {
-                            ToastUI.Show("\u53ea\u80fd\u9009\u62e9\u81f3\u591a2\u5f20\u724c", 2f, pauseGameWhileVisible: false);
+                            ToastUI.Show("\u53ea\u80fd\u9009\u62e9\u81f3\u591a2\u5f20\u724c", pauseGameWhileVisible: false);
                             return;
                         }
 
@@ -8584,7 +8830,24 @@ namespace JunzhenDuijue
                     + n
                     + "\u5f20\u724c\uff0c\u8fd9\u4e9b\u724c\u5206\u522b\u4e3a\uff1a"
                     + namesJoined;
-                SkillEffectBanner.ShowRawLine(banner, () => { TearDownDongZhuoOverlayModal(true, invokeComplete); });
+
+                // 先关闭选牌弹窗，再横幅播报（避免弹窗仍盖在横幅之上）
+                System.Action savedComplete = _dongZhuoOverlayModalOnFullyClosed;
+                _dongZhuoOverlayModalOnFullyClosed = null;
+                if (_dongZhuoOverlayModalRoot != null)
+                {
+                    _dongZhuoOverlayModalRoot.SetActive(false);
+                    UnityEngine.Object.Destroy(_dongZhuoOverlayModalRoot);
+                    _dongZhuoOverlayModalRoot = null;
+                }
+
+                Time.timeScale = _dongZhuoOverlayModalPrevTimeScale <= 0f ? 1f : _dongZhuoOverlayModalPrevTimeScale;
+
+                SkillEffectBanner.ShowRawLine(banner, () =>
+                {
+                    if (invokeComplete)
+                        savedComplete?.Invoke();
+                });
             }
 
             void FinishPick(bool invokeComplete)
@@ -8597,7 +8860,7 @@ namespace JunzhenDuijue
 
                 if (selected.Count > maxDiscard)
                 {
-                    ToastUI.Show("\u53ea\u80fd\u9009\u62e9\u81f3\u591a2\u5f20\u724c", 2f, pauseGameWhileVisible: false);
+                    ToastUI.Show("\u53ea\u80fd\u9009\u62e9\u81f3\u591a2\u5f20\u724c", pauseGameWhileVisible: false);
                     return;
                 }
 
@@ -8781,12 +9044,13 @@ namespace JunzhenDuijue
                     return;
                 }
 
-                PokerCard reclaimed = null;
+                PokerCard? reclaimed = null;
                 if (chosen >= 0 && chosen < def.DiscardPile.Count)
                 {
-                    reclaimed = def.DiscardPile[chosen];
+                    PokerCard c = def.DiscardPile[chosen];
+                    reclaimed = c;
                     def.DiscardPile.RemoveAt(chosen);
-                    def.Hand.Add(reclaimed);
+                    def.Hand.Add(c);
                 }
 
                 RefreshAllFromState();
@@ -8808,14 +9072,14 @@ namespace JunzhenDuijue
             bool defenderIsPlayer,
             string cardId,
             int healAmount,
-            PokerCard reclaimedOrNull,
+            PokerCard? reclaimedOrNull,
             int generalIndex,
             int skillIndex,
             bool endWithDefenseDeclare = true)
         {
             string camp = CampLabelUi(defenderIsPlayer);
-            string reclaimPart = reclaimedOrNull != null
-                ? "\u5e76\u4ece\u5f03\u724c\u5806\u4e2d\u56de\u6536\u4e00\u5f20\u724c\uff1a" + (reclaimedOrNull.DisplayName ?? string.Empty)
+            string reclaimPart = reclaimedOrNull.HasValue
+                ? "\u5e76\u4ece\u5f03\u724c\u5806\u4e2d\u56de\u6536\u4e00\u5f20\u724c\uff1a" + (reclaimedOrNull.Value.DisplayName ?? string.Empty)
                 : "\u6ca1\u6709\u4ece\u5f03\u724c\u5806\u56de\u6536\u724c";
             string line = "\u3010" + camp + "\u73a9\u5bb6\u3011\u4f7f\u7528\u8463\u5353\u7684\u9632\u5fa1\u6280\u3010\u6a2a\u5f81\u66b4\u655b\u3011\u6062\u590d"
                 + healAmount

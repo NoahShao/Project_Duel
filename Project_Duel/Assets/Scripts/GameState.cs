@@ -289,6 +289,8 @@ namespace JunzhenDuijue
         /// <summary>「将要造成伤害」前、由己方效果指示物等叠加的数值（如日后【追锋】）；与 <see cref="PendingAttackBonus"/> 一并计入 rawHit，早于抵御/防御，晚于【虎踞鹰扬】类写入 <see cref="PendingAttackBonus"/> 的节点由规则自行区分。</summary>
         public int PendingReservedAttackerIndicatorBonus;
         public int PendingDefenseReduction;
+        /// <summary>为 true 时，防御技选择后不把「登记减伤」默认抬到 1（如【横征暴敛】仅回血与弃牌堆回收，无通用减伤）。</summary>
+        public bool PendingDefenseOmitDefaultFlatMitigation;
         public int PendingAttackGeneralIndex = -1;
         public int PendingAttackSkillIndex = -1;
         public int PendingDefenseGeneralIndex = -1;
@@ -376,6 +378,7 @@ namespace JunzhenDuijue
             PendingAttackBonus = 0;
             PendingReservedAttackerIndicatorBonus = 0;
             PendingDefenseReduction = 0;
+            PendingDefenseOmitDefaultFlatMitigation = false;
             PendingAttackGeneralIndex = -1;
             PendingAttackSkillIndex = -1;
             PendingDefenseGeneralIndex = -1;

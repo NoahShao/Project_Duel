@@ -292,6 +292,16 @@ namespace JunzhenDuijue
             _state.PendingAttackSkillName = string.Empty;
         }
 
+        /// <summary>防御宣告战报中「登记减伤」或横征暴敛等无通用减伤时的后缀句。</summary>
+        private static string BuildDefenseDeclareSkillLogSuffix()
+        {
+            if (_state.PendingDefenseReduction > 0)
+                return "\uff0c\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction + "\u3002";
+            if (_state.PendingDefenseOmitDefaultFlatMitigation)
+                return "\uff08\u672c\u6280\u4e3a\u56de\u590d\u751f\u547d\u4e0e\u5f03\u724c\u5806\u56de\u6536\uff0c\u672a\u767b\u8bb0\u901a\u7528\u51cf\u4f24\uff09\u3002";
+            return "\uff0c\u672a\u767b\u8bb0\u51cf\u4f24\u3002";
+        }
+
         private static void TryShowDefenseDeclareBanner(bool defenderIsPlayer, int generalIndex, int skillIndex, Action onAfterBannerIfAny = null)
         {
             if (_state == null || generalIndex < 0)
@@ -318,12 +328,15 @@ namespace JunzhenDuijue
             string sk = defRule != null && !string.IsNullOrWhiteSpace(defRule.SkillName)
                 ? defRule.SkillName
                 : _state.PendingDefenseSkillName;
+            string subtitle = defRule != null && string.Equals(defRule.EffectId, OfflineSkillEngine.DongZhuoHengZhengDefenseEffectId, StringComparison.Ordinal)
+                ? "\u56de\u590d\u751f\u547d\u5e76\u53ef\u9009\u5f03\u724c\u5806\u56de\u6536\uff0c\u672a\u767b\u8bb0\u901a\u7528\u51cf\u4f24"
+                : "\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction;
             SkillEffectBanner.Show(
                 defenderIsPlayer,
                 true,
                 SkillEffectBanner.GetRoleNameFromCardId(cid),
                 sk,
-                "\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction,
+                subtitle,
                 onAfterBannerIfAny);
         }
 
@@ -338,7 +351,7 @@ namespace JunzhenDuijue
                 return;
 
             BattleFlowLog.Add(
-                FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u58f0\u660e\u9632\u5fa1\u6280\u3010" + _state.PendingDefenseSkillName + "\u3011\uff0c\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction + "\u3002");
+                FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u58f0\u660e\u9632\u5fa1\u6280\u3010" + _state.PendingDefenseSkillName + "\u3011" + BuildDefenseDeclareSkillLogSuffix());
             Action afterBanner = defenderIsPlayer && !GameUI.IsOnlineBattle() ? TryEndPlayerDefenseAfterDefenseSkillDeclare : null;
             TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex, afterBanner);
             GameUI.NotifyPhaseChanged();
@@ -355,7 +368,7 @@ namespace JunzhenDuijue
                 return;
 
             BattleFlowLog.Add(
-                FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u58f0\u660e\u9632\u5fa1\u6280\u3010" + _state.PendingDefenseSkillName + "\u3011\uff0c\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction + "\u3002");
+                FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u58f0\u660e\u9632\u5fa1\u6280\u3010" + _state.PendingDefenseSkillName + "\u3011" + BuildDefenseDeclareSkillLogSuffix());
             Action afterBanner = defenderIsPlayer && !GameUI.IsOnlineBattle() ? TryEndPlayerDefenseAfterDefenseSkillDeclare : null;
             TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex, afterBanner);
             GameUI.NotifyPhaseChanged();
@@ -389,6 +402,7 @@ namespace JunzhenDuijue
             _state.PendingDefenseSkillIndex = skillIndex;
             _state.PendingDefenseSkillName = string.IsNullOrWhiteSpace(skillName) ? "防御技" : skillName;
             _state.PendingDefenseReduction = 0;
+            _state.PendingDefenseOmitDefaultFlatMitigation = false;
             _state.PendingDefenseSkillKind = SelectedSkillKind.GeneralSkill;
             Action afterDefenseDeclareBanner = defenderIsPlayer && !GameUI.IsOnlineBattle() ? TryEndPlayerDefenseAfterDefenseSkillDeclare : null;
             bool deferDefenseDeclare = OfflineSkillEngine.ConfigureDefenseSkill(
@@ -398,17 +412,17 @@ namespace JunzhenDuijue
                 skillIndex,
                 () => TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex, afterDefenseDeclareBanner),
                 out bool defenseDeclareUiChainedToBamenOutcomeToast);
-            if (_state.PendingDefenseReduction <= 0)
+            if (_state.PendingDefenseReduction <= 0 && !_state.PendingDefenseOmitDefaultFlatMitigation)
                 _state.PendingDefenseReduction = 1;
             _state.DefenseSkillLocked = true;
             Debug.Log("[BattlePhaseManager] 防御技能已选择");
-            if (!deferDefenseDeclare)
-            {
-                BattleFlowLog.Add(
-                    FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u58f0\u660e\u9632\u5fa1\u6280\u3010" + _state.PendingDefenseSkillName + "\u3011\uff0c\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction + "\u3002");
-                if (!defenseDeclareUiChainedToBamenOutcomeToast)
-                    TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex, afterDefenseDeclareBanner);
-            }
+                if (!deferDefenseDeclare)
+                {
+                    BattleFlowLog.Add(
+                        FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u58f0\u660e\u9632\u5fa1\u6280\u3010" + _state.PendingDefenseSkillName + "\u3011" + BuildDefenseDeclareSkillLogSuffix());
+                    if (!defenseDeclareUiChainedToBamenOutcomeToast)
+                        TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex, afterDefenseDeclareBanner);
+                }
 
             GameUI.NotifyPhaseChanged();
         }
@@ -1222,6 +1236,7 @@ namespace JunzhenDuijue
                 _state.PendingDefenseSkillIndex = skillIndex;
                 _state.PendingDefenseSkillName = skillName;
                 _state.PendingDefenseReduction = 0;
+                _state.PendingDefenseOmitDefaultFlatMitigation = false;
                 _state.PendingDefenseSkillKind = SelectedSkillKind.GeneralSkill;
                 bool deferDefenseDeclare = OfflineSkillEngine.ConfigureDefenseSkill(
                     _state,
@@ -1230,12 +1245,12 @@ namespace JunzhenDuijue
                     skillIndex,
                     null,
                     out bool defenseDeclareUiChainedToBamenOutcomeToast);
-                if (_state.PendingDefenseReduction <= 0)
+                if (_state.PendingDefenseReduction <= 0 && !_state.PendingDefenseOmitDefaultFlatMitigation)
                     _state.PendingDefenseReduction = 1;
                 if (!deferDefenseDeclare)
                 {
                     BattleFlowLog.Add(
-                        FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff08\u81ea\u52a8\uff09\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u9009\u7528\u9632\u5fa1\u6280\u3010" + skillName + "\u3011\uff0c\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction + "\u3002");
+                        FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff08\u81ea\u52a8\uff09\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u9009\u7528\u9632\u5fa1\u6280\u3010" + skillName + "\u3011" + BuildDefenseDeclareSkillLogSuffix());
                     if (!defenseDeclareUiChainedToBamenOutcomeToast)
                         TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex);
                 }
