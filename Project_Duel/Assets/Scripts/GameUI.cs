@@ -82,6 +82,20 @@ namespace JunzhenDuijue
         private static List<int> _discardPhaseSelectedIndices = new List<int>();
         private static int _discardPhaseNeedCount;
         private static bool _discardPhaseIsPlayer;
+
+        private enum DiscardPopupPurpose
+        {
+            NormalDiscardPhase,
+            IncomeTyrannyBaozheng,
+        }
+
+        private static DiscardPopupPurpose _discardPopupPurpose;
+        private static System.Action _incomeTyrannyOnConfirmedStep;
+
+        private static GameObject _dongZhuoOverlayModalRoot;
+        private static float _dongZhuoOverlayModalPrevTimeScale;
+        private static System.Action _dongZhuoOverlayModalOnFullyClosed;
+
         private static GameObject _jushuiPopupRoot;
         private static Transform _jushuiContent;
         private static TextMeshProUGUI _jushuiTitle;
@@ -2020,6 +2034,102 @@ namespace JunzhenDuijue
                 OpenDiscardStartSunQuanChangJiangOfferPopup(tryRenZheWuDi, discardOwnerIsPlayer);
             else
                 tryRenZheWuDi();
+        }
+
+        /// <summary>
+        /// 【董卓·暴政】：当前行动方回合的收入阶段结束时，场上每名带【暴政】的翻面董卓<strong>各触发一次</strong>（同节点内按先后手：先手方董卓先于后手方董卓）；
+        /// 每次触发均为双方各弃 1 张。与【据守】等同节点双方技能可各自结算、先手先行的处理一致。
+        /// </summary>
+        public static void RunIncomeEndBaozhengIfNeeded(System.Action onComplete)
+        {
+            if (_state == null || _battleMatchEnded)
+            {
+                onComplete?.Invoke();
+                return;
+            }
+
+            if (_isOnlineMode || !OfflineSkillEngine.ShouldApplyIncomeEndBaozheng(_state))
+            {
+                onComplete?.Invoke();
+                return;
+            }
+
+            System.Collections.Generic.List<bool> owners = OfflineSkillEngine.GetIncomeEndBaozhengOwnerSidesInTriggerOrder(_state);
+            BattleFlowLog.Add(
+                BattlePhaseManager.FormatFlowTurnBracketForBattleLog(_state.IsPlayerTurn)
+                + "\u3010\u66b4\u653f\u3011\uff08\u672c\u56de\u5408\u6536\u5165\u9636\u6bb5\u7ed3\u675f\uff09\uff1a\u573a\u4e0a"
+                + owners.Count
+                + "\u540d\u8463\u5353\u3010\u66b4\u653f\u3011\u6309\u5148\u540e\u624b\u987a\u5e8f\u7ed3\u7b97\uff0c\u6bcf\u6b21\u5747\u4e3a\u53cc\u65b9\u5404\u5f031\u5f20\u3002");
+
+            bool activeIsPlayer = _state.IsPlayerTurn;
+            int batch = 0;
+
+            void RunNextOwnerBatch()
+            {
+                if (_state == null || _battleMatchEnded)
+                {
+                    onComplete?.Invoke();
+                    return;
+                }
+
+                if (batch >= owners.Count)
+                {
+                    onComplete?.Invoke();
+                    return;
+                }
+
+                bool dongZhuoOnPlayerSide = owners[batch++];
+                string mainTitle = "\u3010" + CampLabelUi(dongZhuoOnPlayerSide) + "\u3011\u8463\u5353\u89e6\u53d1\u6280\u80fd\u3010\u66b4\u653f\u3011";
+                string subTitle = "\u8bf7\u5f03\u7f6e\u4e00\u5f20\u724c";
+                DiscardOneHandForIncomeTyranny(
+                    activeIsPlayer,
+                    () => DiscardOneHandForIncomeTyranny(!activeIsPlayer, RunNextOwnerBatch, mainTitle, subTitle),
+                    mainTitle,
+                    subTitle);
+            }
+
+            RunNextOwnerBatch();
+        }
+
+        private static string CampLabelUi(bool sideIsPlayer) =>
+            sideIsPlayer ? "\u5df1\u65b9" : "\u654c\u65b9";
+
+        private static void DiscardOneHandForIncomeTyranny(bool sideIsPlayer, System.Action next, string popupTitle = null, string popupSubtitle = null)
+        {
+            if (_state == null || _battleMatchEnded)
+            {
+                next?.Invoke();
+                return;
+            }
+
+            SideState side = _state.GetSide(sideIsPlayer);
+            if (side.Hand.Count <= 0)
+            {
+                next?.Invoke();
+                return;
+            }
+
+            if (sideIsPlayer)
+            {
+                _discardPopupPurpose = DiscardPopupPurpose.IncomeTyrannyBaozheng;
+                _incomeTyrannyOnConfirmedStep = next;
+                string title = !string.IsNullOrEmpty(popupTitle)
+                    ? popupTitle
+                    : "\u3010\u66b4\u653f\u3011\u8bf7\u5f03\u7f6e 1 \u5f20\u624b\u724c";
+                OpenDiscardPhasePopup(
+                    true,
+                    1,
+                    preserveSelection: false,
+                    purpose: DiscardPopupPurpose.IncomeTyrannyBaozheng,
+                    customTitle: title,
+                    subtitle: popupSubtitle);
+                return;
+            }
+
+            int idx = UnityEngine.Random.Range(0, side.Hand.Count);
+            BattleState.DiscardFromHand(_state, false, new List<int> { idx });
+            RefreshAllFromState();
+            next?.Invoke();
         }
 
         private static void OpenJuShouOfferPopup(SkillRuleEntry rule, System.Action onClosed)
@@ -4869,8 +4979,15 @@ namespace JunzhenDuijue
                 _battleFlowLogModalRoot.SetActive(false);
         }
 
-        private static void OpenDiscardPhasePopup(bool isPlayer, int needCount, bool preserveSelection = false)
+        private static void OpenDiscardPhasePopup(
+            bool isPlayer,
+            int needCount,
+            bool preserveSelection = false,
+            DiscardPopupPurpose purpose = DiscardPopupPurpose.NormalDiscardPhase,
+            string customTitle = null,
+            string subtitle = null)
         {
+            _discardPopupPurpose = purpose;
             _discardPhaseIsPlayer = isPlayer;
             _discardPhaseNeedCount = needCount;
             if (!preserveSelection)
@@ -4879,7 +4996,12 @@ namespace JunzhenDuijue
             CollapsePlayerHandIfExpanded();
             _discardPhasePopupRoot.SetActive(true);
             if (_discardPhaseTitle != null)
-                _discardPhaseTitle.text = "请弃置" + needCount + "张牌";
+            {
+                string main = !string.IsNullOrEmpty(customTitle)
+                    ? customTitle
+                    : "\u8bf7\u5f03\u7f6e" + needCount + "\u5f20\u724c";
+                _discardPhaseTitle.text = string.IsNullOrEmpty(subtitle) ? main : main + "\n" + subtitle;
+            }
             foreach (Transform t in _discardPhaseContent)
                 UnityEngine.Object.Destroy(t.gameObject);
             float cardW = 80f;
@@ -5018,6 +5140,21 @@ namespace JunzhenDuijue
                 ToastUI.Show("\u8bf7\u9009\u62e9\u4e0e\u8981\u6c42\u6570\u91cf\u4e00\u81f4\u7684\u724c");
                 return;
             }
+
+            if (_discardPopupPurpose == DiscardPopupPurpose.IncomeTyrannyBaozheng)
+            {
+                _discardPhasePopupRoot.SetActive(false);
+                if (_state != null)
+                    BattleState.DiscardFromHand(_state, _discardPhaseIsPlayer, new List<int>(_discardPhaseSelectedIndices));
+                _discardPhaseSelectedIndices.Clear();
+                _discardPopupPurpose = DiscardPopupPurpose.NormalDiscardPhase;
+                RefreshAllFromState();
+                System.Action cont = _incomeTyrannyOnConfirmedStep;
+                _incomeTyrannyOnConfirmedStep = null;
+                cont?.Invoke();
+                return;
+            }
+
             _discardPhasePopupRoot.SetActive(false);
             BattlePhaseManager.NotifyDiscardPhaseDone(_discardPhaseIsPlayer, _discardPhaseSelectedIndices.ToArray());
             RefreshAllFromState();
@@ -8278,6 +8415,418 @@ namespace JunzhenDuijue
                 UnityEngine.Object.Destroy(_handEmptyOrderPopupRoot);
                 _handEmptyOrderPopupRoot = null;
             }
+        }
+
+        private static void TearDownDongZhuoOverlayModal(bool restoreTimeScale, bool invokeComplete)
+        {
+            if (_dongZhuoOverlayModalRoot != null)
+            {
+                UnityEngine.Object.Destroy(_dongZhuoOverlayModalRoot);
+                _dongZhuoOverlayModalRoot = null;
+            }
+
+            if (restoreTimeScale)
+                Time.timeScale = _dongZhuoOverlayModalPrevTimeScale <= 0f ? 1f : _dongZhuoOverlayModalPrevTimeScale;
+            System.Action cb = _dongZhuoOverlayModalOnFullyClosed;
+            _dongZhuoOverlayModalOnFullyClosed = null;
+            if (invokeComplete)
+                cb?.Invoke();
+        }
+
+        /// <summary>【飞扬跋扈】：人类攻击方从受害方手牌（牌背展示）中选至多 2 张弃置，随后横幅播报。</summary>
+        public static void BeginFeiYangVictimHandPick(bool attackerIsPlayer, bool victimIsPlayer, int maxDiscard, System.Action onComplete)
+        {
+            if (_root == null || _state == null || _battleMatchEnded)
+            {
+                onComplete?.Invoke();
+                return;
+            }
+
+            SideState vic = _state.GetSide(victimIsPlayer);
+            if (maxDiscard <= 0)
+            {
+                onComplete?.Invoke();
+                return;
+            }
+
+            TearDownDongZhuoOverlayModal(false, false);
+            _dongZhuoOverlayModalPrevTimeScale = Time.timeScale;
+            Time.timeScale = 0f;
+            _dongZhuoOverlayModalOnFullyClosed = onComplete;
+
+            var root = new GameObject("FeiYangVictimPick");
+            root.transform.SetParent(_root.transform, false);
+            _dongZhuoOverlayModalRoot = root;
+            var rootRt = root.AddComponent<RectTransform>();
+            SetFullRect(rootRt);
+            var cvs = root.AddComponent<Canvas>();
+            cvs.overrideSorting = true;
+            cvs.sortingOrder = 72;
+            root.AddComponent<GraphicRaycaster>();
+
+            var overlay = new GameObject("Overlay");
+            overlay.transform.SetParent(root.transform, false);
+            SetFullRect(overlay.AddComponent<RectTransform>());
+            overlay.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.58f);
+
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(root.transform, false);
+            var pr = panel.AddComponent<RectTransform>();
+            pr.anchorMin = pr.anchorMax = new Vector2(0.5f, 0.5f);
+            pr.sizeDelta = new Vector2(980f, 460f);
+            panel.AddComponent<Image>().color = new Color(0.16f, 0.18f, 0.24f, 0.99f);
+
+            string vicCamp = CampLabelUi(victimIsPlayer);
+            string atkCamp = CampLabelUi(attackerIsPlayer);
+            string titleLine = "\u3010" + vicCamp + "\u73a9\u5bb6\u3011\u56e0\u3010" + atkCamp + "\u3011\u8463\u5353\u653b\u51fb\u6280\u3010\u98de\u626c\u9738\u6237\u3011\u968f\u673a\u5f03\u724c";
+            var titleTmp = CreateGameText(panel.transform, titleLine, 22, TextAlignmentOptions.Center);
+            if (titleTmp != null)
+            {
+                var tr = titleTmp.GetComponent<RectTransform>();
+                tr.anchorMin = new Vector2(0.05f, 0.82f);
+                tr.anchorMax = new Vector2(0.95f, 0.96f);
+                tr.offsetMin = tr.offsetMax = Vector2.zero;
+            }
+
+            CreateGameText(
+                panel.transform,
+                "\u8bf7\u9009\u62e9\u81f3\u591a\u4e24\u5f20\u724c",
+                17,
+                TextAlignmentOptions.Center);
+
+            var scrollGo = new GameObject("Scroll");
+            scrollGo.transform.SetParent(panel.transform, false);
+            var scrollR = scrollGo.AddComponent<RectTransform>();
+            scrollR.anchorMin = new Vector2(0.04f, 0.18f);
+            scrollR.anchorMax = new Vector2(0.96f, 0.78f);
+            scrollR.offsetMin = scrollR.offsetMax = Vector2.zero;
+            var viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(scrollGo.transform, false);
+            var vpR = viewport.AddComponent<RectTransform>();
+            vpR.anchorMin = Vector2.zero;
+            vpR.anchorMax = Vector2.one;
+            vpR.offsetMin = vpR.offsetMax = Vector2.zero;
+            viewport.AddComponent<Image>().color = new Color(0.1f, 0.12f, 0.16f, 1f);
+            viewport.AddComponent<Mask>().showMaskGraphic = false;
+            var content = new GameObject("Content");
+            content.transform.SetParent(viewport.transform, false);
+            var contentR = content.AddComponent<RectTransform>();
+            contentR.anchorMin = new Vector2(0f, 1f);
+            contentR.anchorMax = new Vector2(1f, 1f);
+            contentR.pivot = new Vector2(0f, 1f);
+            contentR.anchoredPosition = Vector2.zero;
+            contentR.sizeDelta = new Vector2(0, 140f);
+            var hlg = content.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 10;
+            hlg.padding = new RectOffset(10, 10, 10, 10);
+            hlg.childAlignment = TextAnchor.MiddleLeft;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = false;
+            content.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+            var sr = scrollGo.AddComponent<ScrollRect>();
+            sr.content = contentR;
+            sr.viewport = vpR;
+            sr.horizontal = true;
+            sr.vertical = false;
+
+            var selected = new System.Collections.Generic.HashSet<int>();
+            var imgByIndex = new System.Collections.Generic.Dictionary<int, Image>();
+
+            float cardW = 78f;
+            float cardH = cardW * CardAspectH / CardAspectW;
+            for (int i = 0; i < vic.Hand.Count; i++)
+            {
+                int idx = i;
+                var item = new GameObject("Back" + i);
+                item.transform.SetParent(content.transform, false);
+                var le = item.AddComponent<LayoutElement>();
+                le.preferredWidth = cardW;
+                le.preferredHeight = cardH;
+                var img = item.AddComponent<Image>();
+                img.color = new Color(0.18f, 0.2f, 0.28f, 1f);
+                imgByIndex[idx] = img;
+                var btn = item.AddComponent<Button>();
+                btn.targetGraphic = img;
+                btn.onClick.AddListener(() =>
+                {
+                    if (selected.Contains(idx))
+                    {
+                        selected.Remove(idx);
+                        img.color = new Color(0.18f, 0.2f, 0.28f, 1f);
+                    }
+                    else
+                    {
+                        if (selected.Count >= maxDiscard)
+                        {
+                            ToastUI.Show("\u53ea\u80fd\u9009\u62e9\u81f3\u591a2\u5f20\u724c", 2f, pauseGameWhileVisible: false);
+                            return;
+                        }
+
+                        selected.Add(idx);
+                        img.color = new Color(0.35f, 0.55f, 0.85f, 1f);
+                    }
+                });
+                var qGo = new GameObject("Q");
+                qGo.transform.SetParent(item.transform, false);
+                var qRt = qGo.AddComponent<RectTransform>();
+                qRt.anchorMin = Vector2.zero;
+                qRt.anchorMax = Vector2.one;
+                qRt.offsetMin = qRt.offsetMax = Vector2.zero;
+                CreateGameText(qGo.transform, "\uff1f", 28, TextAlignmentOptions.Center);
+            }
+
+            void ShowFeiYangBannerThenClose(int n, System.Collections.Generic.IReadOnlyList<string> orderedNames, bool invokeComplete)
+            {
+                string namesJoined = n > 0 ? string.Join("\u3001", orderedNames) : "\u65e0";
+                string banner = "\u3010" + vicCamp + "\u73a9\u5bb6\u3011\u56e0\u3010" + atkCamp + "\u3011\u8463\u5353\u7684\u653b\u51fb\u6280\u3010\u98de\u626c\u9738\u6237\u3011\u5f03\u7f6e"
+                    + n
+                    + "\u5f20\u724c\uff0c\u8fd9\u4e9b\u724c\u5206\u522b\u4e3a\uff1a"
+                    + namesJoined;
+                SkillEffectBanner.ShowRawLine(banner, () => { TearDownDongZhuoOverlayModal(true, invokeComplete); });
+            }
+
+            void FinishPick(bool invokeComplete)
+            {
+                if (_state == null)
+                {
+                    TearDownDongZhuoOverlayModal(true, invokeComplete);
+                    return;
+                }
+
+                if (selected.Count > maxDiscard)
+                {
+                    ToastUI.Show("\u53ea\u80fd\u9009\u62e9\u81f3\u591a2\u5f20\u724c", 2f, pauseGameWhileVisible: false);
+                    return;
+                }
+
+                var asc = new System.Collections.Generic.List<int>(selected);
+                asc.Sort();
+                var names = new System.Collections.Generic.List<string>();
+                foreach (int ix in asc)
+                {
+                    if (ix >= 0 && ix < vic.Hand.Count)
+                        names.Add(vic.Hand[ix].DisplayName ?? string.Empty);
+                }
+
+                if (asc.Count > 0)
+                {
+                    var desc = new System.Collections.Generic.List<int>(asc);
+                    desc.Sort((a, b) => b.CompareTo(a));
+                    BattleState.DiscardFromHand(_state, victimIsPlayer, desc);
+                }
+
+                RefreshAllFromState();
+                ShowFeiYangBannerThenClose(names.Count, names, invokeComplete);
+            }
+
+            void FinishCancel(bool invokeComplete)
+            {
+                if (_state == null)
+                {
+                    TearDownDongZhuoOverlayModal(true, invokeComplete);
+                    return;
+                }
+
+                ShowFeiYangBannerThenClose(0, System.Array.Empty<string>(), invokeComplete);
+            }
+
+            CreateJuShouPopupButton(panel.transform, new Vector2(-120f, -196f), "\u786e\u5b9a", new Color(0.22f, 0.52f, 0.38f, 1f), () => FinishPick(true));
+            CreateJuShouPopupButton(panel.transform, new Vector2(120f, -196f), "\u53d6\u6d88", new Color(0.42f, 0.42f, 0.46f, 1f), () => FinishCancel(true));
+            root.transform.SetAsLastSibling();
+        }
+
+        /// <summary>【横征暴敛】：防御方从弃牌堆至多回收 1 张；结束后横幅并衔接防御宣告。</summary>
+        public static void BeginHengZhengBaoLianDiscardPick(
+            BattleState state,
+            bool defenderIsPlayer,
+            string cardId,
+            int healAmount,
+            int generalIndex,
+            int skillIndex)
+        {
+            if (_root == null || state == null)
+            {
+                BattlePhaseManager.CompleteDefenseDeclareAfterHengZheng(defenderIsPlayer, generalIndex, skillIndex);
+                return;
+            }
+
+            SideState def = state.GetSide(defenderIsPlayer);
+            if (def.DiscardPile.Count == 0)
+            {
+                ShowHengZhengBaoLianResultBanner(defenderIsPlayer, cardId, healAmount, null, generalIndex, skillIndex, endWithDefenseDeclare: true);
+                return;
+            }
+
+            TearDownDongZhuoOverlayModal(false, false);
+            _dongZhuoOverlayModalPrevTimeScale = Time.timeScale;
+            Time.timeScale = 0f;
+
+            var root = new GameObject("HengZhengDiscardPick");
+            root.transform.SetParent(_root.transform, false);
+            _dongZhuoOverlayModalRoot = root;
+            var rootRt = root.AddComponent<RectTransform>();
+            SetFullRect(rootRt);
+            var cvs = root.AddComponent<Canvas>();
+            cvs.overrideSorting = true;
+            cvs.sortingOrder = 73;
+            root.AddComponent<GraphicRaycaster>();
+
+            var overlay = new GameObject("Overlay");
+            overlay.transform.SetParent(root.transform, false);
+            SetFullRect(overlay.AddComponent<RectTransform>());
+            overlay.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.58f);
+
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(root.transform, false);
+            var pr = panel.AddComponent<RectTransform>();
+            pr.anchorMin = pr.anchorMax = new Vector2(0.5f, 0.5f);
+            pr.sizeDelta = new Vector2(920f, 480f);
+            panel.AddComponent<Image>().color = new Color(0.16f, 0.18f, 0.24f, 0.99f);
+
+            CreateGameText(panel.transform, "\u5f03\u724c\u5806", 26, TextAlignmentOptions.Center);
+            string camp = CampLabelUi(defenderIsPlayer);
+            CreateGameText(
+                panel.transform,
+                "\u3010" + camp + "\u3011\u8463\u5353\u4f7f\u7528\u9632\u5fa1\u6280\u3010\u6a2a\u5f81\u66b4\u655b\u3011\uff0c\u8bf7\u9009\u62e9\u81f3\u591a\u4e00\u5f20\u724c\u52a0\u5165\u624b\u724c",
+                17,
+                TextAlignmentOptions.Center);
+
+            var scrollGo = new GameObject("Scroll");
+            scrollGo.transform.SetParent(panel.transform, false);
+            var scrollR = scrollGo.AddComponent<RectTransform>();
+            scrollR.anchorMin = new Vector2(0.04f, 0.18f);
+            scrollR.anchorMax = new Vector2(0.96f, 0.72f);
+            scrollR.offsetMin = scrollR.offsetMax = Vector2.zero;
+            var viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(scrollGo.transform, false);
+            var vpR = viewport.AddComponent<RectTransform>();
+            vpR.anchorMin = Vector2.zero;
+            vpR.anchorMax = Vector2.one;
+            vpR.offsetMin = vpR.offsetMax = Vector2.zero;
+            viewport.AddComponent<Image>().color = new Color(0.1f, 0.12f, 0.16f, 1f);
+            viewport.AddComponent<Mask>().showMaskGraphic = false;
+            var content = new GameObject("Content");
+            content.transform.SetParent(viewport.transform, false);
+            var contentR = content.AddComponent<RectTransform>();
+            contentR.anchorMin = new Vector2(0f, 1f);
+            contentR.anchorMax = new Vector2(1f, 1f);
+            contentR.pivot = new Vector2(0f, 1f);
+            contentR.anchoredPosition = Vector2.zero;
+            contentR.sizeDelta = new Vector2(0, 130f);
+            var hlg = content.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 8;
+            hlg.padding = new RectOffset(8, 8, 8, 8);
+            hlg.childAlignment = TextAnchor.MiddleLeft;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = false;
+            content.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+            var sr = scrollGo.AddComponent<ScrollRect>();
+            sr.content = contentR;
+            sr.viewport = vpR;
+            sr.horizontal = true;
+            sr.vertical = false;
+
+            int chosen = -1;
+            var pickImg = new System.Collections.Generic.Dictionary<int, Image>();
+            float cardW = 72f;
+            float cardH = cardW * CardAspectH / CardAspectW;
+            for (int i = 0; i < def.DiscardPile.Count; i++)
+            {
+                int idx = i;
+                PokerCard pc = def.DiscardPile[i];
+                var item = new GameObject("Disc" + i);
+                item.transform.SetParent(content.transform, false);
+                var le = item.AddComponent<LayoutElement>();
+                le.preferredWidth = cardW;
+                le.preferredHeight = cardH;
+                var img = item.AddComponent<Image>();
+                img.color = new Color(0.25f, 0.28f, 0.34f, 1f);
+                pickImg[idx] = img;
+                var btn = item.AddComponent<Button>();
+                btn.targetGraphic = img;
+                btn.onClick.AddListener(() =>
+                {
+                    if (chosen == idx)
+                    {
+                        chosen = -1;
+                        img.color = new Color(0.25f, 0.28f, 0.34f, 1f);
+                    }
+                    else
+                    {
+                        foreach (var kv in pickImg)
+                            kv.Value.color = new Color(0.25f, 0.28f, 0.34f, 1f);
+                        chosen = idx;
+                        img.color = new Color(0.35f, 0.55f, 0.85f, 1f);
+                    }
+                });
+                var labGo = new GameObject("Lbl");
+                labGo.transform.SetParent(item.transform, false);
+                var labRt = labGo.AddComponent<RectTransform>();
+                labRt.anchorMin = Vector2.zero;
+                labRt.anchorMax = Vector2.one;
+                labRt.offsetMin = labRt.offsetMax = Vector2.zero;
+                CreateGameText(labGo.transform, pc.DisplayName ?? string.Empty, 14, TextAlignmentOptions.Center);
+            }
+
+            void Confirm()
+            {
+                if (chosen < 0)
+                {
+                    TearDownDongZhuoOverlayModal(true, false);
+                    ShowHengZhengBaoLianResultBanner(defenderIsPlayer, cardId, healAmount, null, generalIndex, skillIndex, endWithDefenseDeclare: true);
+                    return;
+                }
+
+                PokerCard reclaimed = null;
+                if (chosen >= 0 && chosen < def.DiscardPile.Count)
+                {
+                    reclaimed = def.DiscardPile[chosen];
+                    def.DiscardPile.RemoveAt(chosen);
+                    def.Hand.Add(reclaimed);
+                }
+
+                RefreshAllFromState();
+                TearDownDongZhuoOverlayModal(true, false);
+                ShowHengZhengBaoLianResultBanner(defenderIsPlayer, cardId, healAmount, reclaimed, generalIndex, skillIndex, endWithDefenseDeclare: true);
+            }
+
+            CreateJuShouPopupButton(panel.transform, new Vector2(-130f, -200f), "\u786e\u5b9a", new Color(0.22f, 0.52f, 0.38f, 1f), Confirm);
+            CreateJuShouPopupButton(panel.transform, new Vector2(0f, -200f), "\u53d6\u6d88", new Color(0.42f, 0.42f, 0.46f, 1f), () =>
+            {
+                TearDownDongZhuoOverlayModal(true, false);
+                ShowHengZhengBaoLianResultBanner(defenderIsPlayer, cardId, healAmount, null, generalIndex, skillIndex, endWithDefenseDeclare: true);
+            });
+            root.transform.SetAsLastSibling();
+        }
+
+        /// <summary>【横征暴敛】结果横幅，随后衔接防御宣告。</summary>
+        public static void ShowHengZhengBaoLianResultBanner(
+            bool defenderIsPlayer,
+            string cardId,
+            int healAmount,
+            PokerCard reclaimedOrNull,
+            int generalIndex,
+            int skillIndex,
+            bool endWithDefenseDeclare = true)
+        {
+            string camp = CampLabelUi(defenderIsPlayer);
+            string reclaimPart = reclaimedOrNull != null
+                ? "\u5e76\u4ece\u5f03\u724c\u5806\u4e2d\u56de\u6536\u4e00\u5f20\u724c\uff1a" + (reclaimedOrNull.DisplayName ?? string.Empty)
+                : "\u6ca1\u6709\u4ece\u5f03\u724c\u5806\u56de\u6536\u724c";
+            string line = "\u3010" + camp + "\u73a9\u5bb6\u3011\u4f7f\u7528\u8463\u5353\u7684\u9632\u5fa1\u6280\u3010\u6a2a\u5f81\u66b4\u655b\u3011\u6062\u590d"
+                + healAmount
+                + "\u70b9\u751f\u547d\uff0c"
+                + reclaimPart
+                + "\u3002";
+            SkillEffectBanner.ShowRawLine(
+                line,
+                endWithDefenseDeclare
+                    ? (System.Action)(() => BattlePhaseManager.CompleteDefenseDeclareAfterHengZheng(defenderIsPlayer, generalIndex, skillIndex))
+                    : null);
         }
 
         private static string FormatHandEmptyEntryLine(BattleState state, HandEmptyPassiveEntry e)

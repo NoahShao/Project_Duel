@@ -40,6 +40,7 @@ namespace JunzhenDuijue
             public int PendingSunJianMoraleRestoreAmount;
             public int PendingSunJianMoraleRestorePlayPhaseIndex;
             public bool PendingSunJianMoraleRestoreForSideIsPlayer;
+            public int PendingFeiYangRandomDiscardsAfterHit;
         }
 
         private static Snapshot Capture(BattleState state)
@@ -72,6 +73,7 @@ namespace JunzhenDuijue
                 PendingSunJianMoraleRestoreAmount = state.PendingSunJianMoraleRestoreAmount,
                 PendingSunJianMoraleRestorePlayPhaseIndex = state.PendingSunJianMoraleRestorePlayPhaseIndex,
                 PendingSunJianMoraleRestoreForSideIsPlayer = state.PendingSunJianMoraleRestoreForSideIsPlayer,
+                PendingFeiYangRandomDiscardsAfterHit = state.PendingFeiYangRandomDiscardsAfterHit,
             };
             return snap;
         }
@@ -105,6 +107,7 @@ namespace JunzhenDuijue
             state.PendingSunJianMoraleRestoreAmount = snap.PendingSunJianMoraleRestoreAmount;
             state.PendingSunJianMoraleRestorePlayPhaseIndex = snap.PendingSunJianMoraleRestorePlayPhaseIndex;
             state.PendingSunJianMoraleRestoreForSideIsPlayer = snap.PendingSunJianMoraleRestoreForSideIsPlayer;
+            state.PendingFeiYangRandomDiscardsAfterHit = snap.PendingFeiYangRandomDiscardsAfterHit;
         }
 
         /// <summary>数值越大越好：优先总伤，其次额外阶段、摸牌、恢复等。</summary>
@@ -164,6 +167,8 @@ namespace JunzhenDuijue
                     OfflineSkillEngine.AutoPickCeMaPatternVariant(state, state.ActiveSide.PlayedThisPhase);
                 else if (string.Equals(previewKey, "NO005_0", StringComparison.Ordinal))
                     OfflineSkillEngine.AutoPickYuanShuPatternVariant(state, state.ActiveSide.PlayedThisPhase);
+                else if (string.Equals(previewKey, "NO010_1", StringComparison.Ordinal))
+                    OfflineSkillEngine.AutoPickDongZhuoFeiYangPlayed(state, state.ActiveSide.PlayedThisPhase);
             }
 
             int tp0g = snap.TotalPlayPhasesThisTurn + snap.PendingExtraPlayPhasesToGrant;
@@ -177,6 +182,7 @@ namespace JunzhenDuijue
                 + state.PendingPostResolveHealToAttacker * 180L
                 + state.PendingPostResolveMoraleToAttacker * 150L
                 + state.PendingSunJianMoraleRestoreAmount * 120L
+                + state.PendingFeiYangRandomDiscardsAfterHit * 100L
                 + (state.PendingIgnoreDefenseReduction ? 600L : 0L);
 
             Restore(state, snap);

@@ -42,6 +42,15 @@ namespace JunzhenDuijue
         /// <summary>【孙权·长江天险】弃牌阶段开始时：弃置所有手牌并翻面一名敌方角色。</summary>
         public const string SunQuanChangJiangEffectId = "discard_start_discard_all_flip_enemy";
 
+        /// <summary>【董卓·暴政】收入阶段结束时双方各弃一张手牌。</summary>
+        public const string IncomeEndAllPlayersDiscardOneEffectId = "income_end_all_players_discard_one";
+
+        /// <summary>【董卓·飞扬跋扈】攻击技 EffectId。</summary>
+        public const string DongZhuoFeiYangAttackEffectId = "attack_damage2_force_discard2";
+
+        /// <summary>【董卓·横征暴敛】防御技 EffectId。</summary>
+        public const string DongZhuoHengZhengDefenseEffectId = "defense_heal1_reclaim1";
+
         private const string Hearts = "\u7ea2\u6843";
         private const string Diamonds = "\u65b9\u7247";
         private const string Spades = "\u9ed1\u6843";
@@ -811,6 +820,7 @@ namespace JunzhenDuijue
             state.PendingPostResolveHealToAttacker = 0;
             state.PendingPostResolveMoraleToAttacker = 0;
             state.PendingExtraPlayPhasesToGrant = 0;
+            state.PendingFeiYangRandomDiscardsAfterHit = 0;
             state.PendingCombatNote = string.Empty;
             state.PendingCeMaBannerShapeKind = -1;
             state.PendingJiangDongMenghuBannerKind = -1;
@@ -847,6 +857,9 @@ namespace JunzhenDuijue
                         break;
                     case "NO008_0":
                         handled = TryConfigureZhuandouQianLi(state, attackerIsPlayer, cards, generalIndex, skillIndex);
+                        break;
+                    case "NO010_1":
+                        handled = TryConfigureDongZhuoFeiYang(state, cards);
                         break;
                 }
             }
@@ -891,6 +904,9 @@ namespace JunzhenDuijue
 
             if (string.Equals(rule.EffectId, DefenseRevealSmall8ReduceElseGainEffectId, StringComparison.Ordinal))
                 return ApplyDefenseBamenJinsuo(state, defenderIsPlayer, cardId, rule, onAfterBamenOutcomeBanner, out defenseDeclareUiChainedToBamenOutcomeToast);
+
+            if (string.Equals(rule.EffectId, DongZhuoHengZhengDefenseEffectId, StringComparison.Ordinal))
+                return ApplyDefenseDongZhuoHengZheng(state, defenderIsPlayer, cardId, rule, generalIndex, skillIndex, out defenseDeclareUiChainedToBamenOutcomeToast);
 
             state.PendingDefenseReduction = Mathf.Max(state.PendingDefenseReduction, 1);
             AppendCombatNote(state, "\u9632\u5fa1\u6280\u9ed8\u8ba4\u51cf\u4f24+1");
@@ -968,6 +984,57 @@ namespace JunzhenDuijue
             FinishBamenJinsuoAfterReveal(state, defenderIsPlayer, revealed, cardId, rule, capRank, bonusReduce, onAfterBamenOutcomeBanner);
             defenseDeclareUiChainedToBamenOutcomeToast = onAfterBamenOutcomeBanner != null;
             return false;
+        }
+
+        /// <summary>【横征暴敛】：防御技节点内先回复生命，再由防御方从弃牌堆至多回收 1 张（人类弹窗；AI 自动取顶）；仍登记基础防御减伤。</summary>
+        private static bool ApplyDefenseDongZhuoHengZheng(
+            BattleState state,
+            bool defenderIsPlayer,
+            string cardId,
+            SkillRuleEntry rule,
+            int generalIndex,
+            int skillIndex,
+            out bool defenseDeclareUiChainedToBamenOutcomeToast)
+        {
+            defenseDeclareUiChainedToBamenOutcomeToast = false;
+            var defSide = state.GetSide(defenderIsPlayer);
+            int heal = rule != null ? Mathf.Max(1, rule.Value1) : 1;
+            defSide.CurrentHp = Mathf.Min(defSide.MaxHp, defSide.CurrentHp + heal);
+            state.PendingDefenseReduction = Mathf.Max(state.PendingDefenseReduction, 1);
+
+            if (GameUI.IsOnlineBattle())
+            {
+                PokerCard reclaimed = null;
+                if (defSide.DiscardPile.Count > 0)
+                {
+                    int li = defSide.DiscardPile.Count - 1;
+                    reclaimed = defSide.DiscardPile[li];
+                    defSide.DiscardPile.RemoveAt(li);
+                    defSide.Hand.Add(reclaimed);
+                }
+
+                GameUI.ShowHengZhengBaoLianResultBanner(defenderIsPlayer, cardId, heal, reclaimed, generalIndex, skillIndex, endWithDefenseDeclare: false);
+                return false;
+            }
+
+            if (!defenderIsPlayer)
+            {
+                PokerCard reclaimed = null;
+                if (defSide.DiscardPile.Count > 0)
+                {
+                    int li = defSide.DiscardPile.Count - 1;
+                    reclaimed = defSide.DiscardPile[li];
+                    defSide.DiscardPile.RemoveAt(li);
+                    defSide.Hand.Add(reclaimed);
+                }
+
+                GameUI.ShowHengZhengBaoLianResultBanner(defenderIsPlayer, cardId, heal, reclaimed, generalIndex, skillIndex, endWithDefenseDeclare: false);
+                return false;
+            }
+
+            GameUI.BeginHengZhengBaoLianDiscardPick(state, defenderIsPlayer, cardId, heal, generalIndex, skillIndex);
+            defenseDeclareUiChainedToBamenOutcomeToast = true;
+            return true;
         }
 
         private static bool TryActivateGenericPrimarySkill(BattleState state, SideState side, SkillRuleEntry rule, out string message)
@@ -1128,6 +1195,8 @@ namespace JunzhenDuijue
                 line.Append("\uff1b\u7ed3\u7b97\u540e\u58eb\u6c14+").Append(state.PendingPostResolveMoraleToAttacker);
             if (state.PendingIgnoreDefenseReduction)
                 line.Append("\uff1b\u672c\u6b21\u4e0d\u53ef\u9632\u5fa1\u51cf\u4f24");
+            if (state.PendingFeiYangRandomDiscardsAfterHit > 0)
+                line.Append("\uff1b\u547d\u4e2d\u5219\u653b\u51fb\u65b9\u4ece\u53d7\u5bb3\u65b9\u624b\u724c\u4e2d\u9009\u5f03\u81f3\u591a").Append(state.PendingFeiYangRandomDiscardsAfterHit).Append("\u5f20");
             if (state.PendingSunJianMoraleRestoreAmount > 0)
                 line.Append("\uff1b\u672c\u6b21\u653b\u51fb\u4f24\u5bb3\u7ed3\u7b97\u540e\u58eb\u6c14+").Append(state.PendingSunJianMoraleRestoreAmount);
         }
@@ -1552,11 +1621,98 @@ namespace JunzhenDuijue
             state.PendingBaseDamage = 7;
             state.PendingDamageCategory = DamageCategory.Blade;
             state.PendingDamageElement = DamageElement.None;
-            state.PendingIgnoreDefenseReduction = true;
-            state.PendingPostResolveDrawToAttacker += 3;
+            state.PendingPostResolveDrawToAttacker += 2;
             state.PendingExtraPlayPhasesToGrant += 1;
-            AppendCombatNote(state, "\u3010\u7b56\u9a6c\u65a9\u5c06\u3011\u7ea2\u8272\u540c\u82b1\u987a\uff0c7\u70b9\u4e0d\u53ef\u9632\u5fa1\u4f24\u5bb3\uff0c\u5e76\u4e14\u989d\u5916\u83b7\u5f971\u4e2a\u51fa\u724c\u9636\u6bb5\u4e0e\u64783\u5f20\uff08\u7ed3\u7b97\u65f6\u751f\u6548\uff09");
+            AppendCombatNote(state, "\u3010\u7b56\u9a6c\u65a9\u5c06\u3011\u7ea2\u8272\u540c\u82b1\u987a\uff0c7\u70b9\u5175\u5203\u4f24\u5bb3\uff0c\u672c\u56de\u5408\u989d\u5916\u83b7\u5f971\u4e2a\u51fa\u724c\u9636\u6bb5\u5e76\u64782\u5f20\uff08\u7ed3\u7b97\u65f6\u751f\u6548\uff09");
             return true;
+        }
+
+        /// <summary>
+        /// 收入阶段结束节点上，所有翻面【暴政】的触发归属方，<strong>同节点内按先后手顺序</strong>（<see cref="BattleState.PlayerGoesFirst"/> 方在先，另一方在后）；
+        /// 每名董卓各结算一轮「双方各弃 1 张」，与【据守】等同节点双方技能先手先行的处理方式一致。
+        /// </summary>
+        public static List<bool> GetIncomeEndBaozhengOwnerSidesInTriggerOrder(BattleState state)
+        {
+            var result = new List<bool>();
+            if (state == null)
+                return result;
+
+            void CollectSide(bool sideIsPlayer)
+            {
+                SideState side = state.GetSide(sideIsPlayer);
+                for (int gi = 0; gi < side.GeneralCardIds.Count; gi++)
+                {
+                    if (!side.IsGeneralFaceUp(gi))
+                        continue;
+
+                    string cid = side.GeneralCardIds[gi] ?? string.Empty;
+                    for (int sk = 0; sk < 3; sk++)
+                    {
+                        SkillRuleEntry rule = SkillRuleLoader.GetRule(cid, sk);
+                        if (rule != null && string.Equals(rule.EffectId, IncomeEndAllPlayersDiscardOneEffectId, StringComparison.Ordinal))
+                            result.Add(sideIsPlayer);
+                    }
+                }
+            }
+
+            bool initiative = state.PlayerGoesFirst;
+            CollectSide(initiative);
+            CollectSide(!initiative);
+            return result;
+        }
+
+        /// <summary>场上是否存在翻面【暴政】。</summary>
+        public static bool ShouldApplyIncomeEndBaozheng(BattleState state) =>
+            state != null && GetIncomeEndBaozhengOwnerSidesInTriggerOrder(state).Count > 0;
+
+        /// <summary>【飞扬跋扈】：打出区须为单张黑桃10；2点通用伤害，命中后由攻击方从受害方手牌中选至多 2 张弃置（离线人类攻击方）；否则由程序代选。</summary>
+        public static bool TryConfigureDongZhuoFeiYang(BattleState state, List<PokerCard> cards)
+        {
+            if (state == null || cards == null || cards.Count != 1 || cards[0].PlayedAsGeneral)
+                return false;
+
+            PokerCard c = cards[0];
+            if (!string.Equals(c.Suit ?? string.Empty, Spades, StringComparison.Ordinal) || c.Rank != 10)
+                return false;
+
+            state.PendingBaseDamage = 2;
+            state.PendingDamageCategory = DamageCategory.Generic;
+            state.PendingDamageElement = DamageElement.None;
+            state.PendingFeiYangRandomDiscardsAfterHit = 2;
+            AppendCombatNote(state, "\u3010\u98de\u626c\u9738\u6237\u3011\u9ed1\u684310\uff0c2\u70b9\u901a\u7528\u4f24\u5bb3\uff1b\u82e5\u547d\u4e2d\u5219\u53d7\u5bb3\u65b9\u624b\u724c\u7531\u653b\u51fb\u65b9\u9009\u5f032\u5f20\u5f03\u7f6e");
+            return true;
+        }
+
+        /// <summary>对手宣言【飞扬跋扈】前调用；牌已由 AI 选好，无需再选分支。</summary>
+        public static void AutoPickDongZhuoFeiYangPlayed(BattleState state, List<PokerCard> played)
+        {
+        }
+
+        /// <summary>从指定侧手牌随机弃置 <paramref name="count"/> 张（下标去重后降序弃置）。</summary>
+        public static void RandomDiscardFromHand(BattleState state, bool sideIsPlayer, int count)
+        {
+            if (state == null || count <= 0)
+                return;
+
+            SideState side = state.GetSide(sideIsPlayer);
+            if (side.Hand.Count == 0)
+                return;
+
+            int take = Mathf.Min(count, side.Hand.Count);
+            var pool = new List<int>(side.Hand.Count);
+            for (int i = 0; i < side.Hand.Count; i++)
+                pool.Add(i);
+
+            var chosen = new List<int>(take);
+            for (int i = 0; i < take; i++)
+            {
+                int pi = UnityEngine.Random.Range(0, pool.Count);
+                chosen.Add(pool[pi]);
+                pool.RemoveAt(pi);
+            }
+
+            chosen.Sort((a, b) => b.CompareTo(a));
+            BattleState.DiscardFromHand(state, sideIsPlayer, chosen);
         }
 
         private static void RefreshSideContinuousState(BattleState state, bool sideIsPlayer)

@@ -315,6 +315,8 @@ namespace JunzhenDuijue
         public int PendingPostResolveMoraleToAttacker;
         /// <summary>攻击技在「结算」时计入的额外出牌阶段数（与是否造成伤害无关）；结算后并入 <see cref="TotalPlayPhasesThisTurn"/>。</summary>
         public int PendingExtraPlayPhasesToGrant;
+        /// <summary>【飞扬跋扈】本次攻击在造成伤害后，受害方随机弃置的手牌张数；未命中或伤害为 0 时不处理。</summary>
+        public int PendingFeiYangRandomDiscardsAfterHit;
         public string PendingCombatNote = string.Empty;
         public int PlayPhaseStartPromptMask;
         public bool PlayPhaseStartInitialized;
@@ -394,6 +396,7 @@ namespace JunzhenDuijue
             PendingPostResolveHealToAttacker = 0;
             PendingPostResolveMoraleToAttacker = 0;
             PendingExtraPlayPhasesToGrant = 0;
+            PendingFeiYangRandomDiscardsAfterHit = 0;
             PendingCombatNote = string.Empty;
             DefenseBuffStepDone = false;
             DefenseSkillLocked = false;

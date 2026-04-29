@@ -130,7 +130,7 @@ namespace JunzhenDuijue
     ///   "SkillKey": "NO002_0",
     ///   "DisplayName": "策马斩将",
     ///   "AttackPatterns": [
-    ///     { "Kind": 6, "MinStraightLength": 3, "RequireAllRed": true, "BaseDamage": 7, "Unblockable": true, "ExtraPlayPhases": 1, "PostDraw": 3, "Note": "【策马斩将】红色同花顺" },
+    ///     { "Kind": 6, "MinStraightLength": 3, "RequireAllRed": true, "BaseDamage": 7, "Unblockable": false, "ExtraPlayPhases": 1, "PostDraw": 2, "Note": "【策马斩将】红色同花顺" },
     ///     { "Kind": 5, "MinStraightLength": 3, "RequireAllRed": true, "RequireNotFlush": true, "BaseDamage": 6, "ExtraPlayPhases": 1, "Note": "【策马斩将】红色顺子" },
     ///     { "Kind": 1, "RequireAllRed": true, "BaseDamage": 3, "Note": "【策马斩将】红色单牌" }
     ///   ]

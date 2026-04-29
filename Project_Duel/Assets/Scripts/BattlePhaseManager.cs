@@ -344,6 +344,23 @@ namespace JunzhenDuijue
             GameUI.NotifyPhaseChanged();
         }
 
+        /// <summary>【横征暴敛】弃牌堆选择 UI 结束后补登记防御宣告战报与横幅（与延迟 <see cref="OfflineSkillEngine.ConfigureDefenseSkill"/> 返回配对）。</summary>
+        public static void CompleteDefenseDeclareAfterHengZheng(bool defenderIsPlayer, int generalIndex, int skillIndex)
+        {
+            if (_state == null || GameUI.IsBattleMatchEnded())
+                return;
+            if (_state.CurrentPhase != BattlePhase.Defense || _state.CurrentPhaseStep != PhaseStep.Main)
+                return;
+            if ((_state.IsPlayerTurn ? false : true) != defenderIsPlayer)
+                return;
+
+            BattleFlowLog.Add(
+                FlowTurnBracket(_state.IsPlayerTurn) + "\u9632\u5fa1\u9636\u6bb5\uff0c" + FlowDefenderActor(defenderIsPlayer) + "\u58f0\u660e\u9632\u5fa1\u6280\u3010" + _state.PendingDefenseSkillName + "\u3011\uff0c\u767b\u8bb0\u51cf\u4f24" + _state.PendingDefenseReduction + "\u3002");
+            Action afterBanner = defenderIsPlayer && !GameUI.IsOnlineBattle() ? TryEndPlayerDefenseAfterDefenseSkillDeclare : null;
+            TryShowDefenseDeclareBanner(defenderIsPlayer, generalIndex, skillIndex, afterBanner);
+            GameUI.NotifyPhaseChanged();
+        }
+
         public static void NotifyDefenseSkillSelected(bool defenderIsPlayer, int generalIndex, int skillIndex, string skillName)
         {
             Debug.Log("[BattlePhaseManager] >>> NotifyDefenseSkillSelected: " + skillName);
@@ -554,10 +571,18 @@ namespace JunzhenDuijue
                         return;
                     }
 
-                    OnIncomeEnd?.Invoke(attackerIsPlayer);
-                    _state.CurrentPhase = BattlePhase.Primary;
-                    _state.CurrentPhaseStep = PhaseStep.Start;
-                    RunPhaseStep();
+                    void finishIncomeAndEnterPrimary()
+                    {
+                        if (_state == null)
+                            return;
+                        OnIncomeEnd?.Invoke(attackerIsPlayer);
+                        _state.CurrentPhase = BattlePhase.Primary;
+                        _state.CurrentPhaseStep = PhaseStep.Start;
+                        RunPhaseStep();
+                        TryOpponentAutoAdvanceAfterBattleFlowPacing();
+                    }
+
+                    GameUI.RunIncomeEndBaozhengIfNeeded(finishIncomeAndEnterPrimary);
                     return;
 
                 case BattlePhase.Primary:
@@ -928,68 +953,108 @@ namespace JunzhenDuijue
                         GameUI.ApplyDamageToPlayer(damage);
                 }
 
+                int fyMax = _state.PendingFeiYangRandomDiscardsAfterHit;
+                bool fyPending = !GameUI.IsOnlineBattle() && damage > 0 && fyMax > 0;
+                if (fyPending)
+                    _state.PendingFeiYangRandomDiscardsAfterHit = 0;
+                else
+                    _state.PendingFeiYangRandomDiscardsAfterHit = 0;
+
+                void ContinueResolveAfterDamageAndFeiYang()
+                {
+                    if (_state == null)
+                        return;
+                    if (GameUI.IsBattleMatchEnded())
+                    {
+                        _state.ClearPendingCombat();
+                        return;
+                    }
+
+                    var active = _state.ActiveSide;
+                    if (_state.PendingPostResolveDrawToAttacker > 0)
+                        BattleState.Draw(active, _state.PendingPostResolveDrawToAttacker);
+                    if (_state.PendingPostResolveHealToAttacker > 0)
+                        active.CurrentHp = Mathf.Min(active.MaxHp, active.CurrentHp + _state.PendingPostResolveHealToAttacker);
+                    if (_state.PendingPostResolveMoraleToAttacker > 0)
+                        active.Morale = Mathf.Min(active.MoraleCap, active.Morale + _state.PendingPostResolveMoraleToAttacker);
+
+                    if (_state.PendingExtraPlayPhasesToGrant > 0)
+                    {
+                        _state.TotalPlayPhasesThisTurn += _state.PendingExtraPlayPhasesToGrant;
+                        _state.PendingExtraPlayPhasesToGrant = 0;
+                    }
+
+                    var logLine = new StringBuilder();
+                    logLine.Append(FlowTurnBracket(_state.IsPlayerTurn)).Append("\u7ed3\u7b97\u9636\u6bb5\uff0c");
+                    logLine.Append("\u3010").Append(attackName).Append("\u3011");
+                    logLine.Append("\u5bf9").Append(_state.IsPlayerTurn ? "\u654c\u65b9" : "\u5df1\u65b9\u73a9\u5bb6");
+                    logLine.Append(DamageTypeLabels.FormatResolvedDamageLine(damage, dmgCat, dmgEl));
+                    logLine.Append("\uff08\u9632\u5fa1\uff1a").Append(defenseName).Append("\uff09");
+                    if (changHouBonus > 0)
+                        logLine.Append("\uff0c\u3010\u957f\u543c\u3011\u52a0\u4f24+").Append(changHouBonus);
+                    if (_state.PendingPostResolveDrawToAttacker > 0)
+                        logLine.Append("\uff0c\u653b\u51fb\u65b9\u6478").Append(_state.PendingPostResolveDrawToAttacker).Append("\u5f20\u724c");
+                    if (_state.PendingPostResolveHealToAttacker > 0)
+                        logLine.Append("\uff0c\u653b\u51fb\u65b9\u6062\u590d").Append(_state.PendingPostResolveHealToAttacker).Append("\u70b9\u751f\u547d");
+                    if (_state.PendingPostResolveMoraleToAttacker > 0)
+                        logLine.Append("\uff0c\u653b\u51fb\u65b9\u58eb\u6c14+").Append(_state.PendingPostResolveMoraleToAttacker);
+                    logLine.Append("\u3002");
+                    BattleFlowLog.Add(logLine.ToString());
+
+                    bool attackerIsPlayer = _state.IsPlayerTurn;
+                    var activePlayed = _state.ActiveSide.PlayedThisPhase;
+                    var flippedGenerals = new HashSet<int>();
+                    for (int i = 0; i < activePlayed.Count; i++)
+                    {
+                        var c = activePlayed[i];
+                        if (!c.PlayedAsGeneral)
+                            continue;
+                        int g = c.GeneralSlotIndex;
+                        if (g < 0 || flippedGenerals.Contains(g))
+                            continue;
+                        flippedGenerals.Add(g);
+                        if (_state.TryFlipGeneral(attackerIsPlayer, g))
+                        {
+                            string roleName = !string.IsNullOrEmpty(c.PlayedRoleDisplayName)
+                                ? c.PlayedRoleDisplayName.Trim()
+                                : GameUI.GetGeneralDisplayNameForBattleLog(attackerIsPlayer, g);
+                            BattleFlowLog.Add(FlowTurnBracket(attackerIsPlayer) + "\u7ed3\u7b97\u540e\uff0c\u672c\u6b21\u5f53\u4f5c\u6253\u51fa\u7684\u89d2\u8272\u3010" + roleName + "\u3011\u5df2\u7ffb\u9762\u3002");
+                        }
+                    }
+
+                    if (flippedGenerals.Count > 0)
+                        GameUI.NotifyPhaseChanged();
+
+                    onResolveFullyComplete?.Invoke();
+                }
+
                 if (GameUI.IsBattleMatchEnded())
                 {
                     _state.ClearPendingCombat();
                     return;
                 }
 
-                var active = _state.ActiveSide;
-                if (_state.PendingPostResolveDrawToAttacker > 0)
-                    BattleState.Draw(active, _state.PendingPostResolveDrawToAttacker);
-                if (_state.PendingPostResolveHealToAttacker > 0)
-                    active.CurrentHp = Mathf.Min(active.MaxHp, active.CurrentHp + _state.PendingPostResolveHealToAttacker);
-                if (_state.PendingPostResolveMoraleToAttacker > 0)
-                    active.Morale = Mathf.Min(active.MoraleCap, active.Morale + _state.PendingPostResolveMoraleToAttacker);
-
-                if (_state.PendingExtraPlayPhasesToGrant > 0)
+                if (fyPending && _state.IsPlayerTurn)
                 {
-                    _state.TotalPlayPhasesThisTurn += _state.PendingExtraPlayPhasesToGrant;
-                    _state.PendingExtraPlayPhasesToGrant = 0;
+                    bool victimIsPlayer = false;
+                    GameUI.BeginFeiYangVictimHandPick(_state.IsPlayerTurn, victimIsPlayer, fyMax, ContinueResolveAfterDamageAndFeiYang);
+                    return;
                 }
 
-                var logLine = new StringBuilder();
-                logLine.Append(FlowTurnBracket(_state.IsPlayerTurn)).Append("\u7ed3\u7b97\u9636\u6bb5\uff0c");
-                logLine.Append("\u3010").Append(attackName).Append("\u3011");
-                logLine.Append("\u5bf9").Append(_state.IsPlayerTurn ? "\u654c\u65b9" : "\u5df1\u65b9\u73a9\u5bb6");
-                logLine.Append(DamageTypeLabels.FormatResolvedDamageLine(damage, dmgCat, dmgEl));
-                logLine.Append("\uff08\u9632\u5fa1\uff1a").Append(defenseName).Append("\uff09");
-                if (changHouBonus > 0)
-                    logLine.Append("\uff0c\u3010\u957f\u543c\u3011\u52a0\u4f24+").Append(changHouBonus);
-                if (_state.PendingPostResolveDrawToAttacker > 0)
-                    logLine.Append("\uff0c\u653b\u51fb\u65b9\u6478").Append(_state.PendingPostResolveDrawToAttacker).Append("\u5f20\u724c");
-                if (_state.PendingPostResolveHealToAttacker > 0)
-                    logLine.Append("\uff0c\u653b\u51fb\u65b9\u6062\u590d").Append(_state.PendingPostResolveHealToAttacker).Append("\u70b9\u751f\u547d");
-                if (_state.PendingPostResolveMoraleToAttacker > 0)
-                    logLine.Append("\uff0c\u653b\u51fb\u65b9\u58eb\u6c14+").Append(_state.PendingPostResolveMoraleToAttacker);
-                logLine.Append("\u3002");
-                BattleFlowLog.Add(logLine.ToString());
-
-                bool attackerIsPlayer = _state.IsPlayerTurn;
-                var activePlayed = _state.ActiveSide.PlayedThisPhase;
-                var flippedGenerals = new HashSet<int>();
-                for (int i = 0; i < activePlayed.Count; i++)
+                if (fyPending && !_state.IsPlayerTurn)
                 {
-                    var c = activePlayed[i];
-                    if (!c.PlayedAsGeneral)
-                        continue;
-                    int g = c.GeneralSlotIndex;
-                    if (g < 0 || flippedGenerals.Contains(g))
-                        continue;
-                    flippedGenerals.Add(g);
-                    if (_state.TryFlipGeneral(attackerIsPlayer, g))
-                    {
-                        string roleName = !string.IsNullOrEmpty(c.PlayedRoleDisplayName)
-                            ? c.PlayedRoleDisplayName.Trim()
-                            : GameUI.GetGeneralDisplayNameForBattleLog(attackerIsPlayer, g);
-                        BattleFlowLog.Add(FlowTurnBracket(attackerIsPlayer) + "\u7ed3\u7b97\u540e\uff0c\u672c\u6b21\u5f53\u4f5c\u6253\u51fa\u7684\u89d2\u8272\u3010" + roleName + "\u3011\u5df2\u7ffb\u9762\u3002");
-                    }
+                    bool victimIsPlayer = true;
+                    int take = Mathf.Min(fyMax, _state.Player.Hand.Count);
+                    if (take > 0)
+                        OfflineSkillEngine.RandomDiscardFromHand(_state, victimIsPlayer, take);
+                    BattleFlowLog.Add(
+                        FlowTurnBracket(_state.IsPlayerTurn)
+                        + "\u3010\u98de\u626c\u9738\u6237\u3011\uff1a\u53d7\u5bb3\u65b9\u968f\u673a\u5f03\u7f6e"
+                        + take
+                        + "\u5f20\u624b\u724c\u3002");
                 }
 
-                if (flippedGenerals.Count > 0)
-                    GameUI.NotifyPhaseChanged();
-
-                onResolveFullyComplete?.Invoke();
+                ContinueResolveAfterDamageAndFeiYang();
             });
         }
 
@@ -1103,6 +1168,8 @@ namespace JunzhenDuijue
                 OfflineSkillEngine.AutoPickJiangDongMenghuVariant(_state, _state.ActiveSide.PlayedThisPhase);
             else if (string.Equals(skillKey, "NO008_0", StringComparison.Ordinal))
                 OfflineSkillEngine.AutoPickSunCeZhuandouVariant(_state, _state.ActiveSide.PlayedThisPhase);
+            else if (string.Equals(skillKey, "NO010_1", StringComparison.Ordinal))
+                OfflineSkillEngine.AutoPickDongZhuoFeiYangPlayed(_state, _state.ActiveSide.PlayedThisPhase);
         }
 
         private static void OfferHuBuGuanYouThenContinueMainEnd(Action continueAfter)
