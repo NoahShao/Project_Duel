@@ -8,6 +8,21 @@ namespace JunzhenDuijue
     {
         public const string ResistEffectKey = "\u62b5\u5fa1";
 
+        /// <summary>【中毒】指示物层数 key，与卡面/Intro 用语一致。</summary>
+        public const string PoisonEffectKey = "\u4e2d\u6bd2";
+
+        /// <summary>【中毒】层数上限。</summary>
+        public const int PoisonEffectMaxLayers = 3;
+
+        /// <summary>【鸩毒】规则表 EffectId。</summary>
+        public const string LiRuZhenduEffectId = "attribute_damage_grant_poison";
+
+        /// <summary>【绝计】规则表 EffectId。</summary>
+        public const string LiRuJuejiEffectId = "fire_damage_triggers_poison";
+
+        /// <summary>【焚城】攻击技 EffectId。</summary>
+        public const string LiRuFenchengAttackEffectId = "attack_fire_damage_scaling";
+
         private const string StartGameEffectId = "start_game_gain_morale_and_max";
         public const string EmptyHandDrawTwoOncePerTurnEffectId = "empty_hand_draw_two_once_per_turn";
         /// <remarks>EffectId 为 <c>play_phase_start_...</c>；在「任意出牌阶段开始时」由 <see cref="GameUI.RunPlayPhaseStartPromptsThen"/> 触发，且与同节点另一方据守按先后手顺序结算。</remarks>
@@ -825,6 +840,7 @@ namespace JunzhenDuijue
             state.PendingCeMaBannerShapeKind = -1;
             state.PendingJiangDongMenghuBannerKind = -1;
             state.PendingSunCeZhuandouBannerKind = -1;
+            state.PendingLiRuFenchengBannerKind = -1;
             ClearJiangdongMengHuMoralePending(state);
 
             if (!TryGetFaceUpRule(state, attackerIsPlayer, generalIndex, skillIndex, out string cardId, out _))
@@ -860,6 +876,9 @@ namespace JunzhenDuijue
                         break;
                     case "NO010_1":
                         handled = TryConfigureDongZhuoFeiYang(state, cards);
+                        break;
+                    case "NO011_2":
+                        handled = TryConfigureLiRuFencheng(state, attackerIsPlayer, cards, generalIndex, skillIndex);
                         break;
                 }
             }
@@ -1564,7 +1583,9 @@ namespace JunzhenDuijue
                                 ? DescribeJiangDongMenghuShapeForBanner(state)
                                 : string.Equals(skillKey, "NO008_0", StringComparison.Ordinal)
                                     ? DescribeSunCeZhuandouShapeForBanner(state, played)
-                                    : GenericAttackShapes.DescribeShapeForLog(state, played);
+                                    : string.Equals(skillKey, "NO011_2", StringComparison.Ordinal)
+                                        ? DescribeLiRuFenchengShapeForBanner(state)
+                                        : GenericAttackShapes.DescribeShapeForLog(state, played);
 
                     var sb = new System.Text.StringBuilder();
                     if (!string.IsNullOrEmpty(shape))
@@ -1714,6 +1735,281 @@ namespace JunzhenDuijue
         /// <summary>对手宣言【飞扬跋扈】前调用；牌已由 AI 选好，无需再选分支。</summary>
         public static void AutoPickDongZhuoFeiYangPlayed(BattleState state, List<PokerCard> played)
         {
+        }
+
+        /// <summary>场上任一侧是否有翻面可见的【绝计】（李儒）。存在时，【中毒】的触发时机改为「受到该李儒操控方造成的火焰伤害时」（不再于宣言攻击技时触发）。</summary>
+        public static bool BattleHasFaceUpLiRuJueJi(BattleState state)
+        {
+            if (state == null)
+                return false;
+            return TryFindFaceUpRule(
+                       state,
+                       true,
+                       e => string.Equals(e.CardId, "NO011", StringComparison.Ordinal)
+                            && e.SkillIndex == 1
+                            && string.Equals(e.EffectId, LiRuJuejiEffectId, StringComparison.Ordinal),
+                       out _,
+                       out _,
+                       out _,
+                       out _)
+                   || TryFindFaceUpRule(
+                       state,
+                       false,
+                       e => string.Equals(e.CardId, "NO011", StringComparison.Ordinal)
+                            && e.SkillIndex == 1
+                            && string.Equals(e.EffectId, LiRuJuejiEffectId, StringComparison.Ordinal),
+                       out _,
+                       out _,
+                       out _,
+                       out _);
+        }
+
+        /// <summary>伤害来源方是否具翻面可见的李儒【绝计】（用于火焰伤害前触发【中毒】）。</summary>
+        public static bool DamageSourceSideHasFaceUpLiRuJueJi(BattleState state, bool sourceIsPlayer)
+        {
+            if (state == null)
+                return false;
+            return TryFindFaceUpRule(
+                state,
+                sourceIsPlayer,
+                e => string.Equals(e.CardId, "NO011", StringComparison.Ordinal)
+                     && e.SkillIndex == 1
+                     && string.Equals(e.EffectId, LiRuJuejiEffectId, StringComparison.Ordinal),
+                out _,
+                out _,
+                out _,
+                out _);
+        }
+
+        /// <summary>伤害来源方是否具翻面可见的李儒【鸩毒】。</summary>
+        public static bool DamageSourceSideHasFaceUpLiRuZhendu(BattleState state, bool sourceIsPlayer)
+        {
+            if (state == null)
+                return false;
+            return TryFindFaceUpRule(
+                state,
+                sourceIsPlayer,
+                e => string.Equals(e.CardId, "NO011", StringComparison.Ordinal)
+                     && e.SkillIndex == 0
+                     && string.Equals(e.EffectId, LiRuZhenduEffectId, StringComparison.Ordinal),
+                out _,
+                out _,
+                out _,
+                out _);
+        }
+
+        /// <summary>打出区是否满足【焚城】红色单牌：恰好一张非将红色牌。</summary>
+        public static bool LiRuFenchengPlayedMatchesRedSingle(IReadOnlyList<PokerCard> cards)
+        {
+            if (cards == null || cards.Count != 1 || cards[0].PlayedAsGeneral)
+                return false;
+            return PokerPatternRules.IsRedCard(cards[0]);
+        }
+
+        /// <summary>打出区是否满足【焚城】红色对子：恰好两张非将红色牌且同比较点数。</summary>
+        public static bool LiRuFenchengPlayedMatchesRedPair(IReadOnlyList<PokerCard> cards)
+        {
+            if (cards == null || cards.Count != 2 || cards[0].PlayedAsGeneral || cards[1].PlayedAsGeneral)
+                return false;
+            if (!PokerPatternRules.IsRedCard(cards[0]) || !PokerPatternRules.IsRedCard(cards[1]))
+                return false;
+            return PokerPatternRules.GetComparisonPoint(cards[0]) == PokerPatternRules.GetComparisonPoint(cards[1]);
+        }
+
+        /// <summary>敌方 AI：能宣言对子则选对子，否则单牌。</summary>
+        public static void AutoPickLiRuFenchengVariant(BattleState state, List<PokerCard> cards)
+        {
+            if (state == null || cards == null)
+                return;
+            if (LiRuFenchengPlayedMatchesRedPair(cards))
+                state.PendingAttackPatternVariant = 1;
+            else
+                state.PendingAttackPatternVariant = 0;
+        }
+
+        private static bool TryConfigureLiRuFencheng(BattleState state, bool attackerIsPlayer, List<PokerCard> cards, int generalIndex, int skillIndex)
+        {
+            if (state == null || cards == null)
+                return false;
+            if (!TryGetFaceUpRule(state, attackerIsPlayer, generalIndex, skillIndex, out _, out SkillRuleEntry rule) || rule == null)
+                return false;
+            if (!string.Equals(rule.EffectId, LiRuFenchengAttackEffectId, StringComparison.Ordinal))
+                return false;
+
+            bool canSingle = LiRuFenchengPlayedMatchesRedSingle(cards);
+            bool canPair = LiRuFenchengPlayedMatchesRedPair(cards);
+            if (!canSingle && !canPair)
+                return false;
+
+            int variant = state.PendingAttackPatternVariant;
+            if (variant < 0)
+                AutoPickLiRuFenchengVariant(state, cards);
+            variant = state.PendingAttackPatternVariant;
+            state.PendingAttackPatternVariant = -1;
+
+            int dmg1 = Mathf.Max(1, rule.Value1);
+            int dmg2 = Mathf.Max(dmg1 + 1, rule.Value2);
+            // variant 0：红色单牌效果（1 点）；打出红色对子时也可宣言此分支（向下包容）。
+            // variant 1：红色对子效果（2 点）；仅当打出区为红色对子时可选。
+            if (variant == 1)
+            {
+                if (!canPair)
+                    return false;
+                state.PendingBaseDamage = dmg2;
+                state.PendingLiRuFenchengBannerKind = 1;
+            }
+            else if (variant == 0)
+            {
+                if (canSingle || canPair)
+                {
+                    state.PendingBaseDamage = dmg1;
+                    state.PendingLiRuFenchengBannerKind = 0;
+                }
+                else
+                    return false;
+            }
+            else
+                return false;
+
+            state.PendingDamageCategory = DamageCategory.Attribute;
+            state.PendingDamageElement = DamageElement.Fire;
+            state.PendingAttackSkillKind = SelectedSkillKind.GeneralSkill;
+            AppendCombatNote(
+                state,
+                "\u3010\u711a\u57ce\u3011"
+                    + (state.PendingLiRuFenchengBannerKind == 1 ? "\u7ea2\u8272\u5bf9\u5b50" : "\u7ea2\u8272\u5355\u724c")
+                    + "\uff0c"
+                    + state.PendingBaseDamage
+                    + "\u70b9\u706b\u7130\u4f24\u5bb3");
+            return true;
+        }
+
+        public static string DescribeLiRuFenchengShapeForBanner(BattleState state)
+        {
+            if (state == null)
+                return string.Empty;
+            return state.PendingLiRuFenchengBannerKind switch
+            {
+                1 => "\u7ea2\u8272\u5bf9\u5b50",
+                0 => "\u7ea2\u8272\u5355\u724c",
+                _ => string.Empty,
+            };
+        }
+
+        /// <summary>
+        /// 【中毒】于「将要使用攻击技」时：若未因【绝计】改写触发时机，则先受到 X 点无来源毒性伤害（X 为层数），再移除 1 层，最后调用 <paramref name="onContinue"/>。
+        /// </summary>
+        public static void ResolvePoisonBeforeAttackSkillDeclarationThen(BattleState state, bool attackerIsPlayer, Action onContinue)
+        {
+            if (state == null || onContinue == null)
+            {
+                onContinue?.Invoke();
+                return;
+            }
+
+            if (GameUI.IsOnlineBattle() || BattleHasFaceUpLiRuJueJi(state))
+            {
+                onContinue();
+                return;
+            }
+
+            var atkSide = state.GetSide(attackerIsPlayer);
+            int layers = atkSide.GetEffectLayerCount(PoisonEffectKey);
+            if (layers <= 0)
+            {
+                onContinue();
+                return;
+            }
+
+            int x = Mathf.Min(PoisonEffectMaxLayers, layers);
+            BattleFlowLog.Add(
+                BattlePhaseManager.FormatFlowTurnBracketForBattleLog(attackerIsPlayer)
+                + "\u51fa\u724c\u9636\u6bb5\uff0c\u3010\u4e2d\u6bd2\u3011\uff1a\u53d7\u5bb3\u65b9\u53d7\u5230"
+                + x
+                + "\u70b9\u65e0\u6765\u6e90\u6bd2\u6027\u4f24\u5bb3\uff0c\u79fb\u96641\u5c42\u300c\u4e2d\u6bd2\u300d\u3002");
+
+            void afterHp(int finalAmt)
+            {
+                if (state != null)
+                    atkSide.RemoveEffectLayers(PoisonEffectKey, 1);
+                onContinue();
+            }
+
+            GameUI.ApplyHpDamageWithOptionalResist(attackerIsPlayer, x, afterHp);
+        }
+
+        /// <summary>【绝计】：李儒操控方造成火焰伤害、将要扣血前，对受害方结算一次与【中毒】宣言时相同的效果。</summary>
+        public static void MaybeApplyPoisonProcBeforeIncomingFireDamageFromLiRu(
+            BattleState state,
+            bool attackerIsPlayer,
+            bool victimIsPlayer,
+            int incomingFireDamage,
+            Action onDone)
+        {
+            if (state == null || onDone == null)
+            {
+                onDone?.Invoke();
+                return;
+            }
+
+            if (incomingFireDamage <= 0 || !DamageSourceSideHasFaceUpLiRuJueJi(state, attackerIsPlayer))
+            {
+                onDone();
+                return;
+            }
+
+            var vicSide = state.GetSide(victimIsPlayer);
+            int layers = vicSide.GetEffectLayerCount(PoisonEffectKey);
+            if (layers <= 0)
+            {
+                onDone();
+                return;
+            }
+
+            int x = Mathf.Min(PoisonEffectMaxLayers, layers);
+            BattleFlowLog.Add(
+                BattlePhaseManager.FormatFlowTurnBracketForBattleLog(state.IsPlayerTurn)
+                + "\u3010\u7edd\u8ba1\u3011\u3010\u4e2d\u6bd2\u3011\uff1a\u53d7\u5bb3\u65b9\u53d7\u5230"
+                + x
+                + "\u70b9\u65e0\u6765\u6e90\u6bd2\u6027\u4f24\u5bb3\uff08\u706b\u7130\u4f24\u5bb3\u7ed3\u7b97\u524d\uff09\uff0c\u79fb\u96641\u5c42\u300c\u4e2d\u6bd2\u300d\u3002");
+
+            void afterHp(int finalAmt)
+            {
+                if (state != null)
+                    vicSide.RemoveEffectLayers(PoisonEffectKey, 1);
+                onDone();
+            }
+
+            GameUI.ApplyHpDamageWithOptionalResist(victimIsPlayer, x, afterHp);
+        }
+
+        /// <summary>本次攻击结算中已对受害方造成最终伤害且为属性伤害后：若来源方有【鸩毒】，则尝试进入弃牌/指目标流程。</summary>
+        public static void MaybeScheduleLiRuZhenduAfterAttributeDamageResolved(
+            BattleState state,
+            bool damageSourceIsPlayer,
+            int hpDamageDealt,
+            DamageCategory dmgCat,
+            Action onContinue)
+        {
+            if (state == null || onContinue == null)
+            {
+                onContinue?.Invoke();
+                return;
+            }
+
+            if (GameUI.IsOnlineBattle() || hpDamageDealt <= 0 || dmgCat != DamageCategory.Attribute)
+            {
+                onContinue();
+                return;
+            }
+
+            if (!DamageSourceSideHasFaceUpLiRuZhendu(state, damageSourceIsPlayer))
+            {
+                onContinue();
+                return;
+            }
+
+            GameUI.BeginLiRuZhenduOfferChain(state, damageSourceIsPlayer, onContinue);
         }
 
         /// <summary>从指定侧手牌随机弃置 <paramref name="count"/> 张（下标去重后降序弃置）。</summary>

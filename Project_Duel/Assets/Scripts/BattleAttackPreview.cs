@@ -29,6 +29,7 @@ namespace JunzhenDuijue
             public int PendingCeMaBannerShapeKind;
             public int PendingJiangDongMenghuBannerKind;
             public int PendingSunCeZhuandouBannerKind;
+            public int PendingLiRuFenchengBannerKind;
             public SelectedSkillKind PendingAttackSkillKind;
             public int PendingGenericAttackOptionIndex;
             public bool PendingGenericAttackShapeChoicePending;
@@ -62,6 +63,7 @@ namespace JunzhenDuijue
                 PendingCeMaBannerShapeKind = state.PendingCeMaBannerShapeKind,
                 PendingJiangDongMenghuBannerKind = state.PendingJiangDongMenghuBannerKind,
                 PendingSunCeZhuandouBannerKind = state.PendingSunCeZhuandouBannerKind,
+                PendingLiRuFenchengBannerKind = state.PendingLiRuFenchengBannerKind,
                 PendingAttackSkillKind = state.PendingAttackSkillKind,
                 PendingGenericAttackOptionIndex = state.PendingGenericAttackOptionIndex,
                 PendingGenericAttackShapeChoicePending = state.PendingGenericAttackShapeChoicePending,
@@ -96,6 +98,7 @@ namespace JunzhenDuijue
             state.PendingCeMaBannerShapeKind = snap.PendingCeMaBannerShapeKind;
             state.PendingJiangDongMenghuBannerKind = snap.PendingJiangDongMenghuBannerKind;
             state.PendingSunCeZhuandouBannerKind = snap.PendingSunCeZhuandouBannerKind;
+            state.PendingLiRuFenchengBannerKind = snap.PendingLiRuFenchengBannerKind;
             state.PendingAttackSkillKind = snap.PendingAttackSkillKind;
             state.PendingGenericAttackOptionIndex = snap.PendingGenericAttackOptionIndex;
             state.PendingGenericAttackShapeChoicePending = snap.PendingGenericAttackShapeChoicePending;
@@ -169,6 +172,8 @@ namespace JunzhenDuijue
                     OfflineSkillEngine.AutoPickYuanShuPatternVariant(state, state.ActiveSide.PlayedThisPhase);
                 else if (string.Equals(previewKey, "NO010_1", StringComparison.Ordinal))
                     OfflineSkillEngine.AutoPickDongZhuoFeiYangPlayed(state, state.ActiveSide.PlayedThisPhase);
+                else if (string.Equals(previewKey, "NO011_2", StringComparison.Ordinal))
+                    OfflineSkillEngine.AutoPickLiRuFenchengVariant(state, state.ActiveSide.PlayedThisPhase);
             }
 
             int tp0g = snap.TotalPlayPhasesThisTurn + snap.PendingExtraPlayPhasesToGrant;

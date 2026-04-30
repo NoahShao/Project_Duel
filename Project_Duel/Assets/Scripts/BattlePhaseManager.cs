@@ -252,7 +252,7 @@ namespace JunzhenDuijue
             _state.PendingAttackSkillKind = SelectedSkillKind.GenericAttack;
             _state.PendingAttackSkillName = "\u901a\u7528\u653b\u51fb";
 
-            OfflineSkillEngine.ConfigureAttackSkill(_state, true, -1, -1, () =>
+            void afterGenericConfigure()
             {
                 if (_state == null)
                     return;
@@ -262,6 +262,11 @@ namespace JunzhenDuijue
                 Debug.Log("[BattlePhaseManager] 通用攻击牌型已选定，进入 Defense 阶段");
                 RunPhaseStep();
                 GameUI.NotifyPhaseChanged();
+            }
+
+            OfflineSkillEngine.ResolvePoisonBeforeAttackSkillDeclarationThen(_state, true, () =>
+            {
+                OfflineSkillEngine.ConfigureAttackSkill(_state, true, -1, -1, afterGenericConfigure);
             });
         }
 
@@ -288,6 +293,7 @@ namespace JunzhenDuijue
             _state.PendingAttackPatternVariant = -1;
             _state.PendingJiangDongMenghuBannerKind = -1;
             _state.PendingSunCeZhuandouBannerKind = -1;
+            _state.PendingLiRuFenchengBannerKind = -1;
             _state.PendingAttackSkillKind = SelectedSkillKind.None;
             _state.PendingAttackSkillName = string.Empty;
         }
@@ -959,13 +965,14 @@ namespace JunzhenDuijue
                 if (_state == null)
                     return;
 
-                if (damage > 0)
+                if (GameUI.IsBattleMatchEnded())
                 {
-                    if (_state.IsPlayerTurn)
-                        GameUI.ApplyDamageToOpponent(damage);
-                    else
-                        GameUI.ApplyDamageToPlayer(damage);
+                    _state.ClearPendingCombat();
+                    return;
                 }
+
+                bool atkIsPlayer = _state.IsPlayerTurn;
+                bool vicIsPlayer = !atkIsPlayer;
 
                 int fyMax = _state.PendingFeiYangRandomDiscardsAfterHit;
                 bool fyPending = !GameUI.IsOnlineBattle() && damage > 0 && fyMax > 0;
@@ -1042,33 +1049,78 @@ namespace JunzhenDuijue
                     onResolveFullyComplete?.Invoke();
                 }
 
-                if (GameUI.IsBattleMatchEnded())
+                void runFeiYangBranchThenContinue()
                 {
-                    _state.ClearPendingCombat();
-                    return;
+                    if (_state == null)
+                        return;
+                    if (GameUI.IsBattleMatchEnded())
+                    {
+                        _state.ClearPendingCombat();
+                        return;
+                    }
+
+                    if (fyPending && _state.IsPlayerTurn)
+                    {
+                        GameUI.BeginFeiYangVictimHandPick(_state.IsPlayerTurn, false, fyMax, ContinueResolveAfterDamageAndFeiYang);
+                        return;
+                    }
+
+                    if (fyPending && !_state.IsPlayerTurn)
+                    {
+                        int take = Mathf.Min(fyMax, _state.Player.Hand.Count);
+                        if (take > 0)
+                            OfflineSkillEngine.RandomDiscardFromHand(_state, true, take);
+                        BattleFlowLog.Add(
+                            FlowTurnBracket(_state.IsPlayerTurn)
+                            + "\u3010\u98de\u626c\u9738\u6237\u3011\uff1a\u53d7\u5bb3\u65b9\u968f\u673a\u5f03\u7f6e"
+                            + take
+                            + "\u5f20\u624b\u724c\u3002");
+                    }
+
+                    ContinueResolveAfterDamageAndFeiYang();
                 }
 
-                if (fyPending && _state.IsPlayerTurn)
+                void afterHpAndOptionalZhendu()
                 {
-                    bool victimIsPlayer = false;
-                    GameUI.BeginFeiYangVictimHandPick(_state.IsPlayerTurn, victimIsPlayer, fyMax, ContinueResolveAfterDamageAndFeiYang);
-                    return;
+                    runFeiYangBranchThenContinue();
                 }
 
-                if (fyPending && !_state.IsPlayerTurn)
+                void applyMainHitHpThenZhendu()
                 {
-                    bool victimIsPlayer = true;
-                    int take = Mathf.Min(fyMax, _state.Player.Hand.Count);
-                    if (take > 0)
-                        OfflineSkillEngine.RandomDiscardFromHand(_state, victimIsPlayer, take);
-                    BattleFlowLog.Add(
-                        FlowTurnBracket(_state.IsPlayerTurn)
-                        + "\u3010\u98de\u626c\u9738\u6237\u3011\uff1a\u53d7\u5bb3\u65b9\u968f\u673a\u5f03\u7f6e"
-                        + take
-                        + "\u5f20\u624b\u724c\u3002");
+                    if (_state == null)
+                        return;
+                    if (GameUI.IsBattleMatchEnded())
+                    {
+                        _state.ClearPendingCombat();
+                        return;
+                    }
+
+                    if (damage > 0)
+                    {
+                        if (atkIsPlayer)
+                            GameUI.ApplyDamageToOpponent(damage);
+                        else
+                            GameUI.ApplyDamageToPlayer(damage);
+                    }
+
+                    if (GameUI.IsBattleMatchEnded())
+                    {
+                        _state.ClearPendingCombat();
+                        return;
+                    }
+
+                    OfflineSkillEngine.MaybeScheduleLiRuZhenduAfterAttributeDamageResolved(_state, atkIsPlayer, damage, dmgCat, afterHpAndOptionalZhendu);
                 }
 
-                ContinueResolveAfterDamageAndFeiYang();
+                bool juejiPoisonFirst = damage > 0
+                    && dmgCat == DamageCategory.Attribute
+                    && dmgEl == DamageElement.Fire
+                    && OfflineSkillEngine.DamageSourceSideHasFaceUpLiRuJueJi(_state, atkIsPlayer);
+
+                if (juejiPoisonFirst)
+                    OfflineSkillEngine.MaybeApplyPoisonProcBeforeIncomingFireDamageFromLiRu(_state, atkIsPlayer, vicIsPlayer, damage, applyMainHitHpThenZhendu);
+                else
+                    applyMainHitHpThenZhendu();
             });
         }
 
@@ -1184,6 +1236,8 @@ namespace JunzhenDuijue
                 OfflineSkillEngine.AutoPickSunCeZhuandouVariant(_state, _state.ActiveSide.PlayedThisPhase);
             else if (string.Equals(skillKey, "NO010_1", StringComparison.Ordinal))
                 OfflineSkillEngine.AutoPickDongZhuoFeiYangPlayed(_state, _state.ActiveSide.PlayedThisPhase);
+            else if (string.Equals(skillKey, "NO011_2", StringComparison.Ordinal))
+                OfflineSkillEngine.AutoPickLiRuFenchengVariant(_state, _state.ActiveSide.PlayedThisPhase);
         }
 
         private static void OfferHuBuGuanYouThenContinueMainEnd(Action continueAfter)
@@ -1267,29 +1321,37 @@ namespace JunzhenDuijue
             if (_state == null)
                 return;
 
-            if (generalIndex >= 0)
+            void core()
             {
-                _state.PendingGenericAttackOptionIndex = -1;
-                _state.PendingGenericAttackShapeChoicePending = false;
-                _state.PendingGenericAttackShapeDisplayName = string.Empty;
+                if (_state == null)
+                    return;
+
+                if (generalIndex >= 0)
+                {
+                    _state.PendingGenericAttackOptionIndex = -1;
+                    _state.PendingGenericAttackShapeChoicePending = false;
+                    _state.PendingGenericAttackShapeDisplayName = string.Empty;
+                }
+
+                _state.PendingAttackGeneralIndex = generalIndex;
+                _state.PendingAttackSkillIndex = skillIndex;
+                _state.PendingAttackSkillName = string.IsNullOrWhiteSpace(skillName) ? "\u901a\u7528\u653b\u51fb" : skillName;
+                _state.PendingAttackSkillKind = generalIndex >= 0 ? SelectedSkillKind.GeneralSkill : SelectedSkillKind.GenericAttack;
+
+                OfflineSkillEngine.ConfigureAttackSkill(_state, _state.IsPlayerTurn, generalIndex, skillIndex, () =>
+                {
+                    if (_state == null || _state.PendingGenericAttackShapeChoicePending)
+                        return;
+                    LogAttackSkillConfigured();
+                    NotifyActiveSideHandEmptyPassivesIfMatchActive();
+                    onAfterDeclareBanner?.Invoke();
+                });
+
+                if (_state.PendingGenericAttackShapeChoicePending)
+                    return;
             }
 
-            _state.PendingAttackGeneralIndex = generalIndex;
-            _state.PendingAttackSkillIndex = skillIndex;
-            _state.PendingAttackSkillName = string.IsNullOrWhiteSpace(skillName) ? "\u901a\u7528\u653b\u51fb" : skillName;
-            _state.PendingAttackSkillKind = generalIndex >= 0 ? SelectedSkillKind.GeneralSkill : SelectedSkillKind.GenericAttack;
-
-            OfflineSkillEngine.ConfigureAttackSkill(_state, _state.IsPlayerTurn, generalIndex, skillIndex, () =>
-            {
-                if (_state == null || _state.PendingGenericAttackShapeChoicePending)
-                    return;
-                LogAttackSkillConfigured();
-                NotifyActiveSideHandEmptyPassivesIfMatchActive();
-                onAfterDeclareBanner?.Invoke();
-            });
-
-            if (_state.PendingGenericAttackShapeChoicePending)
-                return;
+            OfflineSkillEngine.ResolvePoisonBeforeAttackSkillDeclarationThen(_state, _state.IsPlayerTurn, core);
         }
 
         private static bool TryFindTaggedSkill(bool sideIsPlayer, string tag, out int generalIndex, out int skillIndex, out string skillName)

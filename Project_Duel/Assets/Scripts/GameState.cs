@@ -308,6 +308,8 @@ namespace JunzhenDuijue
         public int PendingJiangDongMenghuBannerKind = -1;
         /// <summary>【转斗千里】宣言横幅用：0 自由顺子、1 自由同花顺；-1 未登记。</summary>
         public int PendingSunCeZhuandouBannerKind = -1;
+        /// <summary>【焚城】宣言横幅：0 红色单牌、1 红色对子；-1 未登记。</summary>
+        public int PendingLiRuFenchengBannerKind = -1;
         /// <summary>通用攻击：玩家在 <see cref="GenericAttackShapes.BuildSortedOptions"/> 列表中的选项下标；-1 表示未指定（多选项时由 AI 择优或等待玩家选择）。</summary>
         public int PendingGenericAttackOptionIndex = -1;
         public bool PendingGenericAttackShapeChoicePending;
@@ -392,6 +394,7 @@ namespace JunzhenDuijue
             PendingCeMaBannerShapeKind = -1;
             PendingJiangDongMenghuBannerKind = -1;
             PendingSunCeZhuandouBannerKind = -1;
+            PendingLiRuFenchengBannerKind = -1;
             PendingGenericAttackOptionIndex = -1;
             PendingGenericAttackShapeChoicePending = false;
             PendingGenericAttackShapeDisplayName = string.Empty;

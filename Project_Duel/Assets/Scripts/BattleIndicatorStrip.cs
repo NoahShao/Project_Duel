@@ -20,6 +20,8 @@ namespace JunzhenDuijue
                 return string.Empty;
             if (string.Equals(effectKey, OfflineSkillEngine.ResistEffectKey, StringComparison.Ordinal))
                 return "\u62b5\u5fa1";
+            if (string.Equals(effectKey, OfflineSkillEngine.PoisonEffectKey, StringComparison.Ordinal))
+                return "\u4e2d\u6bd2";
             return effectKey;
         }
 
@@ -30,6 +32,8 @@ namespace JunzhenDuijue
                 return string.Empty;
             if (string.Equals(effectKey, OfflineSkillEngine.ResistEffectKey, StringComparison.Ordinal))
                 return "\u62b5\u5fa1";
+            if (string.Equals(effectKey, OfflineSkillEngine.PoisonEffectKey, StringComparison.Ordinal))
+                return "\u4e2d\u6bd2";
             return effectKey;
         }
 
